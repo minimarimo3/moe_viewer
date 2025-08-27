@@ -20,7 +20,7 @@ class SettingsScreen extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.folder_outlined),
                 title: const Text('表示するフォルダを選択'),
-                subtitle: const Text('現在選択中のフォルダ: Pixiv'), // 今は仮表示
+                // subtitle: const Text('現在選択中のフォルダ: Pixiv'), // 今は仮表示
                 onTap: () async {
                   // フォルダピッカーを開く
                   String? result = await FilePicker.platform.getDirectoryPath();

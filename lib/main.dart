@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:moe_viewer/dispatch_screen.dart';
 
 import 'detail_screen.dart';
 import 'file_thumbnail.dart';
@@ -10,7 +11,6 @@ import 'dart:io'; // ファイルやディレクトリを操作するための�
 import 'package:provider/provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 // import 'package:path_provider/path_provider.dart'; // フォルダのパスを取得するためのパッケージ
-import 'package:permission_handler/permission_handler.dart';
 
 enum LoadingStatus {
   loading, // 読み込み中
@@ -29,6 +29,7 @@ void main() {
   );
 }
 
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -40,7 +41,8 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: 'Moe Viewer Home Page'),
+      // home: const MyHomePage(title: 'Moe Viewer Home Page'),
+      home: const DispatchScreen()
     );
   }
 }
@@ -81,9 +83,11 @@ class _MyHomePageState extends State<MyHomePage> {
       await settings.init();
 
       // --- 2. 権限を要求する ---
-      final status = await Permission.manageExternalStorage.request();
+      // final status = await Permission.manageExternalStorage.request();
+      _loadImages();
 
       // --- 3. 結果に応じて画像を読み込む ---
+      /*
       if (status.isGranted) {
         _loadImages(); // この時点では、settingsは必ず初期化済み
       } else {
@@ -92,6 +96,7 @@ class _MyHomePageState extends State<MyHomePage> {
         });
         print("全ファイルへのアクセスが拒否されました。");
       }
+      */
     });
   }
 

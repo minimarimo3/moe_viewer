@@ -88,7 +88,6 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 }
 
-*/
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -133,6 +132,94 @@ class _DetailScreenState extends State<DetailScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+*/
+
+// lib/detail_screen.dart
+
+import 'dart:async'; // ★★★ Timerを使うためにインポート
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // ★★★ SystemChromeを使うためにインポート
+
+class DetailScreen extends StatefulWidget {
+  final List<File> imageFileList;
+  final int initialIndex;
+
+  const DetailScreen({
+    super.key,
+    required this.imageFileList,
+    required this.initialIndex,
+  });
+
+  @override
+  State<DetailScreen> createState() => _DetailScreenState();
+}
+
+class _DetailScreenState extends State<DetailScreen> {
+  late PageController _pageController;
+  bool _isUiVisible = true; // ★★★ UIの表示状態を管理する変数
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: widget.initialIndex);
+
+    // ★★★ 画面を開いて0秒後に自動でUIを隠す
+    Timer(const Duration(seconds: 0), () {
+      if (mounted) {
+        _toggleUiVisibility();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    // ★★★ この画面を離れるときに、必ずシステムUIを元に戻す
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  // ★★★ UIの表示/非表示を切り替える関数 ★★★
+  void _toggleUiVisibility() {
+    setState(() {
+      _isUiVisible = !_isUiVisible;
+
+      if (_isUiVisible) {
+        // UIを表示する（システムUIも元に戻す）
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      } else {
+        // UIを隠す（システムUIも全て隠す）
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      // ★★★ _isUiVisibleの値に応じてAppBarを表示/非表示
+      appBar: _isUiVisible
+          ? AppBar(backgroundColor: Colors.black.withOpacity(0.3))
+          : null,
+      // AppBarの高さを考慮するために必要
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.black,
+      // ★★★ 画面全体をGestureDetectorで囲んでタップを検知
+      body: GestureDetector(
+        onTap: _toggleUiVisibility,
+        child: PageView.builder(
+          controller: _pageController,
+          itemCount: widget.imageFileList.length,
+          itemBuilder: (context, index) {
+            return InteractiveViewer(
+              child: Center(child: Image.file(widget.imageFileList[index])),
+            );
+          },
+        ),
       ),
     );
   }
