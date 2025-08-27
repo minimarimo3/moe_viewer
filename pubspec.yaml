@@ -36,26 +36,26 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # デバイスで色々権限を取得する（ここではPixiv画像フォルダを取得）
-  permission_handler: ^11.3.1
+  permission_handler: ^12.0.1
   # 画像ライブラリとかのパスを取得
   photo_manager: ^3.1.1
   # exifとか取得
-  image: ^4.2.0
+  image: ^4.5.4
   exif: ^3.3.0
   # 設定情報を保存する
-  shared_preferences: ^2.2.3 
+  shared_preferences: ^2.5.3 
   # 状態を管理する
-  provider: ^6.1.2
+  provider: ^6.1.5
   # ディレクトリ選択とかファイル選択
-  file_picker: ^8.0.3
+  file_picker: ^10.3.2
   # フォルダのパスを取得
-  path_provider: ^2.1.3
+  path_provider: ^2.1.5
   # サムネの同時生成に制限をかける
   pool: ^1.5.1
   # シェアボタン
-  share_plus: ^9.0.0
+  share_plus: ^11.1.0
   # URLを開く
-  url_launcher: ^6.3.0
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

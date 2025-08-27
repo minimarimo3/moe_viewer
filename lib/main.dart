@@ -43,6 +43,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         fontFamily: 'NotoSansJP',
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
       ),
       // home: const MyHomePage(title: 'Moe Viewer Home Page'),
       home: const DispatchScreen()
