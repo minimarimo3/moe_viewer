@@ -142,8 +142,12 @@ class _DetailScreenState extends State<DetailScreen> {
 
 import 'dart:async'; // ★★★ Timerを使うためにインポート
 import 'dart:io';
+import 'dart:math';
+import 'package:image/image.dart' as img;
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // ★★★ SystemChromeを使うためにインポート
+import 'package:url_launcher/url_launcher.dart';
 
 class DetailScreen extends StatefulWidget {
   final List<File> imageFileList;
@@ -162,10 +166,118 @@ class DetailScreen extends StatefulWidget {
 class _DetailScreenState extends State<DetailScreen> {
   late PageController _pageController;
   bool _isUiVisible = true; // ★★★ UIの表示状態を管理する変数
+  late int _currentIndex;
+
+  Future<void> _showImageDetails(BuildContext context, File imageFile) async {
+    // 画像のバイトデータを読み込み
+    final bytes = await imageFile.readAsBytes();
+    // 画像をデコードして解像度を取得
+    final image = img.decodeImage(bytes);
+    final dimensions = (image != null)
+        ? '${image.width} x ${image.height}'
+        : '不明';
+    // ファイルサイズを取得してフォーマット
+    final sizeInBytes = await imageFile.length();
+    final sizeFormatted = _formatBytes(sizeInBytes, 2);
+
+    // Pixiv IDを取得
+    final pixivId = _extractPixivId(imageFile.path);
+
+    // 画面下からスライドアップするパネル（ModalBottomSheet）を表示
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return Container(
+          // padding: const EdgeInsets.all(16.0),
+          padding: EdgeInsets.only(
+            top: 16.0,
+            left: 16.0,
+            right: 16.0,
+            // 下の余白に、システムのUI分(ナビゲーションバーの高さ)を追加する
+            bottom: 16.0 + MediaQuery.of(context).viewPadding.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text(
+                '画像の詳細',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const Divider(),
+              ListTile(
+                leading: Icon(Icons.photo_size_select_actual_outlined),
+                title: Text('解像度: $dimensions'),
+              ),
+              ListTile(
+                leading: Icon(Icons.sd_storage_outlined),
+                title: Text('ファイルサイズ: $sizeFormatted'),
+              ),
+              ListTile(
+                leading: Icon(Icons.folder_outlined),
+                title: Text('パス'),
+                subtitle: Text(imageFile.path),
+              ),
+              if (pixivId != null)
+                ListTile(
+                  leading: const Icon(Icons.open_in_new),
+                  title: const Text('Pixivで作品を見る'),
+                  subtitle: Text('ID: $pixivId'),
+                  onTap: () {
+                    _launchURL('https://www.pixiv.net/artworks/$pixivId');
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ★★★ バイト数をKB, MB, GBに変換するヘルパー関数 ★★★
+  String _formatBytes(int bytes, int decimals) {
+    if (bytes <= 0) return "0 B";
+    const suffixes = ["B", "KB", "MB", "GB", "TB"];
+    var i = (log(bytes) / log(1024)).floor();
+    return '${(bytes / pow(1024, i)).toStringAsFixed(decimals)} ${suffixes[i]}';
+  }
+
+  // ★★★ ファイル名からPixivのイラストIDを抽出する関数 ★★★
+String? _extractPixivId(String path) {
+  // ファイル名の部分だけを取得 (例: illust_12345_p0.jpg)
+  final fileName = path.split('/').last;
+
+  // 正規表現で 'illust_' と '_' の間の数字を探す
+  final regExp = RegExp(r'illust_(\d+)_');
+  final match = regExp.firstMatch(fileName);
+
+  // パターンに一致すれば、数字の部分 (グループ1) を返す
+  if (match != null) {
+    return match.group(1);
+  }
+
+  return null; // 一致しなければnullを返す
+}
+
+// ★★★ URLを開くための関数 ★★★
+void _launchURL(String url) async {
+  final uri = Uri.parse(url);
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(uri);
+  } else {
+    // エラーハンドリング（例: メッセージ表示）
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('このリンクを開けませんでした: $url')),
+      );
+    }
+  }
+}
 
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
 
     // ★★★ 画面を開いて0秒後に自動でUIを隠す
@@ -203,16 +315,40 @@ class _DetailScreenState extends State<DetailScreen> {
     return Scaffold(
       // ★★★ _isUiVisibleの値に応じてAppBarを表示/非表示
       appBar: _isUiVisible
-          ? AppBar(backgroundColor: Colors.black.withOpacity(0.3))
+          ? AppBar(
+              backgroundColor: Colors.grey,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.share_outlined),
+                  onPressed: () {
+                    final currentImage = widget.imageFileList[_currentIndex];
+                    // XFileに変換して共有
+                    Share.shareXFiles([XFile(currentImage.path)]);
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.info_outline),
+                  onPressed: () {
+                    final currentImage = widget.imageFileList[_currentIndex];
+                    _showImageDetails(context, currentImage);
+                  },
+                ),
+              ],
+            )
           : null,
       // AppBarの高さを考慮するために必要
       extendBodyBehindAppBar: true,
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.white,
       // ★★★ 画面全体をGestureDetectorで囲んでタップを検知
       body: GestureDetector(
         onTap: _toggleUiVisibility,
         child: PageView.builder(
           controller: _pageController,
+          onPageChanged: (index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          },
           itemCount: widget.imageFileList.length,
           itemBuilder: (context, index) {
             return InteractiveViewer(
