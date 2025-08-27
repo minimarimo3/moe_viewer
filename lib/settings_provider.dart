@@ -13,12 +13,10 @@ class SettingsProvider extends ChangeNotifier {
   List<String> get selectedPaths => _selectedPaths;
   bool get nsfwFilterEnabled => _nsfwFilterEnabled; // ★★★ NSFW設定用のゲッターを追加
 
-  SettingsProvider() {
-    loadSettings(); // 起動時にすべての設定を読み込む
-  }
+  // SettingsProvider() { loadSettings(); // 起動時にすべての設定を読み込む }
 
   // すべての設定を読み込むように名前を変更
-  Future<void> loadSettings() async {
+  Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _selectedPaths =
         prefs.getStringList(_pathsKey) ??

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'detail_screen.dart';
-import 'file_thumbnail.dart'; 
+import 'file_thumbnail.dart';
 import 'settings_screen.dart';
 import 'asset_thumbnail.dart';
 import 'settings_provider.dart';
@@ -61,89 +61,31 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-    _requestPermissionAndLoadImages(); // ← 画面が表示される前に、権限リクエストの処理を呼び出す
+    // _requestPermissionAndLoadImages(); // ← 画面が表示される前に、権限リクエストの処理を呼び出す
+    _initializeApp();
   }
 
-  // 権限リクエストと画像読み込みをまとめて行う関数
-  Future<void> _requestPermissionAndLoadImages() async {
-    // photo_managerが提供する、より丁寧な権限リクエスト。こちらの場合、Pixivフォルダ等のアルバムまでしかアクセスできない。
-    // final PermissionState ps = await PhotoManager.requestPermissionExtend();
-    // こちらは、MANAGE_EXTERNAL_STORAGE権限を直接リクエストする方法。より強力だが、Google Playのポリシーに注意。
-    var ps = await Permission.manageExternalStorage.request();
-    if (ps.isGranted) {
-      // 許可された場合
-      print("写真へのアクセスが許可されました。");
-      _loadImages();
-    } else {
-      // 拒否された場合
-      print("写真へのアクセスが拒否されました。");
-      // 権限が拒否されたら、状態を「空」にしてメッセージ表示
-      setState(() {
-        _status = LoadingStatus.empty;
-      });
-      // TODO: ここでユーザーに設定画面へ誘導するなどの処理も可能
-      // await PhotoManager.openSetting();
-    }
-  }
+  Future<void> _initializeApp() async {
+    // 画面の初回描画が終わった直後に処理を開始させるおまじない
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // --- 1. 設定の読み込みを待つ ---
+      final settings = Provider.of<SettingsProvider>(context, listen: false);
+      await settings.init();
 
-  /*
-  Future<void> _loadImages() async {
-    // Providerから設定データを取得（listen: false で、UIの再構築は要求しない）
-    final settings = Provider.of<SettingsProvider>(context, listen: false);
-    final selectedPaths = settings.selectedPaths;
+      // --- 2. 権限を要求する ---
+      final status = await Permission.manageExternalStorage.request();
 
-    setState(() {
-      _status = LoadingStatus.loading; // 読み込み開始
-    });
-
-    // 選択されたフォルダ名だけを抽出 (例: "/path/to/Pixiv" -> "Pixiv")
-    final selectedFolderNames = selectedPaths
-        .map((path) => path.split('/').last.toLowerCase())
-        .toList();
-
-    // .nomediaを無視するフィルタ設定
-    final filterOption = FilterOptionGroup(includeHiddenAssets: true);
-
-    // すべてのアルバムを取得
-    final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
-      filterOption: filterOption,
-    );
-
-    if (albums.isEmpty) {
-      print("アルバムが見つかりませんでした。");
-      return;
-    }
-
-    // 結果を格納するための空のリストを用意
-    List<AssetEntity> allAssets = [];
-
-    // すべてのアルバムをチェック
-    for (final album in albums) {
-      // アルバム名が、選択されたフォルダ名のリストに含まれているかチェック
-      if (selectedFolderNames.contains(album.name.toLowerCase())) {
-        print('${album.name} フォルダを発見。画像を読み込みます。');
-        final assets = await album.getAssetListRange(
-          start: 0,
-          end: await album.assetCountAsync,
-        );
-        allAssets.addAll(assets); // 見つかった画像をリストに追加
-      }
-    }
-
-    // 最終的に見つかったすべてのアセットでUIを更新
-    setState(() {
-      _assets = allAssets;
-      if (_assets.isEmpty) {
-        _status = LoadingStatus.empty; // 結果が0件なら「空」状態に
+      // --- 3. 結果に応じて画像を読み込む ---
+      if (status.isGranted) {
+        _loadImages(); // この時点では、settingsは必ず初期化済み
       } else {
-        _status = LoadingStatus.completed; // 1件以上あれば「完了」状態に
+        setState(() {
+          _status = LoadingStatus.empty; // 権限がなければ「空」と見なす
+        });
+        print("全ファイルへのアクセスが拒否されました。");
       }
     });
-
-    print('合計 ${_assets.length} 個の画像が見つかりました。');
   }
-  */
-  // in _MyHomePageState class
 
   Future<void> _loadImages() async {
     setState(() {
@@ -277,40 +219,6 @@ class _MyHomePageState extends State<MyHomePage> {
               );
             },
           );
-        /*
-          return GridView.builder(
-            // グリッドのレイアウトを定義
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3, // 1行に表示するアイテム数
-              crossAxisSpacing: 2.0, // アイテム間の水平方向のスペース
-              mainAxisSpacing: 2.0, // アイテム間の垂直方向のスペース
-            ),
-            // 表示するアイテムの総数
-            // itemCount: _assets.length,
-            itemCount: _displayItems.length,
-            // 各アイテム（グリッドの1マス）をどのように描画するかを定義
-            itemBuilder: (BuildContext context, int index) {
-              // final asset = _assets[index];
-              final asset = _displayItems[index];
-              return GestureDetector(
-                onTap: () async {
-                  // 詳細画面に遷移する直前に、高解像度のFileを取得する
-                  final file = await asset.file;
-                  if (file != null && mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DetailScreen(imageFile: file),
-                      ),
-                    );
-                  }
-                },
-                // ここで自作した AssetThumbnail ウィジェットを使う
-                child: AssetThumbnail(asset: asset),
-              );
-            },
-          );
-          */
         case LoadingStatus.error:
           return const Text('エラーが発生しました。');
       }
