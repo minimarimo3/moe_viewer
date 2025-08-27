@@ -1,3 +1,4 @@
+/*
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:exif/exif.dart'; // ★★★ exif パッケージをインポート ★★★
@@ -82,6 +83,56 @@ class _DetailScreenState extends State<DetailScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+*/
+
+import 'dart:io';
+import 'package:flutter/material.dart';
+
+class DetailScreen extends StatefulWidget {
+  final List<File> imageFileList; // 全画像のリスト
+  final int initialIndex;         // 最初に表示する画像のインデックス
+
+  const DetailScreen({
+    super.key,
+    required this.imageFileList,
+    required this.initialIndex,
+  });
+
+  @override
+  State<DetailScreen> createState() => _DetailScreenState();
+}
+
+class _DetailScreenState extends State<DetailScreen> {
+  late PageController _pageController; // PageViewをコントロールするためのもの
+
+  @override
+  void initState() {
+    super.initState();
+    // 最初に表示するページを指定してPageControllerを作成
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(),
+      backgroundColor: Colors.black,
+      body: PageView.builder(
+        controller: _pageController,
+        itemCount: widget.imageFileList.length,
+        itemBuilder: (context, index) {
+          // 各ページに画像を表示
+          return InteractiveViewer( // ピンチズーム機能はそのまま
+            child: Center(
+              child: Image.file(widget.imageFileList[index]),
+            ),
+          );
+        },
       ),
     );
   }

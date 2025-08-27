@@ -16,7 +16,8 @@ enum LoadingStatus {
   loading, // 読み込み中
   completed, // 完了（画像あり）
   empty, // 完了（画像なし）
-  error, // エラー
+  errorUnknown, // エラー
+  errorPermissionDenied, // 権限拒否
 }
 
 void main() {
@@ -54,7 +55,10 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   // List<AssetEntity> _assets = [];
+  // 一覧で表示されるアイテムのリスト
   List<dynamic> _displayItems = [];
+  // 詳細画面で表示される画像ファイルのリスト
+  List<File> _imageFilesForDetail = [];
   LoadingStatus _status = LoadingStatus.loading;
 
   // initStateは、画面が作成されたときに一度だけ呼ばれる特別な場所です
@@ -66,6 +70,10 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _initializeApp() async {
+    // TODO: 適切な権限の要求をする
+    //  具体的には、もうちょい軽い権限（例えば、写真ライブラリへのアクセス）を要求する
+    //  PhotoManager.requestPermissionExtend();
+
     // 画面の初回描画が終わった直後に処理を開始させるおまじない
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       // --- 1. 設定の読み込みを待つ ---
@@ -80,13 +88,14 @@ class _MyHomePageState extends State<MyHomePage> {
         _loadImages(); // この時点では、settingsは必ず初期化済み
       } else {
         setState(() {
-          _status = LoadingStatus.empty; // 権限がなければ「空」と見なす
+          _status = LoadingStatus.errorPermissionDenied;
         });
         print("全ファイルへのアクセスが拒否されました。");
       }
     });
   }
 
+  /*
   Future<void> _loadImages() async {
     setState(() {
       _status = LoadingStatus.loading;
@@ -138,7 +147,7 @@ class _MyHomePageState extends State<MyHomePage> {
         final files = directory.listSync(recursive: true);
         for (final file in files) {
           final filePath = file.path.toLowerCase();
-          print('直接スキャン中: ${filePath}');
+          print('直接スキャン中: $filePath');
           if (filePath.endsWith('.jpg') ||
               filePath.endsWith('.png') ||
               filePath.endsWith('.jpeg') ||
@@ -158,6 +167,68 @@ class _MyHomePageState extends State<MyHomePage> {
 
     print('合計 ${_displayItems.length} 個のアイテムが見つかりました。');
   }
+  */
+  // in _MyHomePageState class
+
+Future<void> _loadImages() async {
+  setState(() { _status = LoadingStatus.loading; });
+
+  final settings = Provider.of<SettingsProvider>(context, listen: false);
+  final selectedPaths = settings.selectedPaths;
+
+  List<dynamic> allDisplayItems = [];
+  List<File> allDetailFiles = []; // ★★★ 詳細画面用のリストもここで作成
+
+  // --- 公式ルート (photo_manager) ---
+  final filterOption = FilterOptionGroup(includeHiddenAssets: true);
+  final allAlbums = await PhotoManager.getAssetPathList(filterOption: filterOption);
+  final albumMap = {for (var album in allAlbums) album.name.toLowerCase(): album};
+
+  List<String> pathsForDirectScan = [];
+
+  for (final path in selectedPaths) {
+    final folderName = path.split('/').last.toLowerCase();
+
+    if (albumMap.containsKey(folderName)) {
+      final album = albumMap[folderName]!;
+      final assets = await album.getAssetListRange(start: 0, end: await album.assetCountAsync);
+      for (final asset in assets) {
+        allDisplayItems.add(asset); // サムネイル用リストに追加
+        final file = await asset.file; // ★★★ ここでFileに変換
+        if (file != null) {
+          allDetailFiles.add(file); // 詳細画面用リストに追加
+        }
+      }
+    } else {
+      pathsForDirectScan.add(path);
+    }
+  }
+
+  // --- 特殊ルート (dart:io) ---
+  for (final path in pathsForDirectScan) {
+    final directory = Directory(path);
+    if (await directory.exists()) {
+      final files = directory.listSync(recursive: true);
+      for (final fileEntity in files) {
+        if (fileEntity is File) {
+          final filePath = fileEntity.path.toLowerCase();
+          if (filePath.endsWith('.jpg') || filePath.endsWith('.png') || filePath.endsWith('.jpeg') || filePath.endsWith('.gif')) {
+            allDisplayItems.add(fileEntity); // サムネイル用リストに追加
+            allDetailFiles.add(fileEntity); // 詳細画面用リストに追加
+          }
+        }
+      }
+    }
+  }
+
+  setState(() {
+    _displayItems = allDisplayItems;
+    _imageFilesForDetail = allDetailFiles; // ★★★ 作成したリストを保存
+    _status = _displayItems.isEmpty ? LoadingStatus.empty : LoadingStatus.completed;
+  });
+
+  print('合計 ${_displayItems.length} 個のアイテムが見つかりました（詳細画面用リストも準備完了）。');
+}
 
   @override
   Widget build(BuildContext context) {
@@ -197,6 +268,16 @@ class _MyHomePageState extends State<MyHomePage> {
 
               return GestureDetector(
                 onTap: () async {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DetailScreen(
+                        imageFileList: _imageFilesForDetail, // ★★★ 準備済みのリストを渡す
+                        initialIndex: index, // タップされたインデックスはそのまま
+                      ),
+                    ),
+                  );
+                  /*
                   File? imageFile;
                   // タップされたアイテムの型に応じてFileオブジェクトを取得します。
                   if (item is AssetEntity) {
@@ -214,13 +295,16 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                     );
                   }
+                */
                 },
                 child: thumbnailWidget,
               );
             },
           );
-        case LoadingStatus.error:
-          return const Text('エラーが発生しました。');
+        case LoadingStatus.errorUnknown:
+          return const Text('不明なエラーが発生しました。');
+        case LoadingStatus.errorPermissionDenied:
+          return const Text('ファイルを表示するのに必要な権限が拒否されました。アプリの設定（右上）から権限を付与してください。');
       }
     }
 
