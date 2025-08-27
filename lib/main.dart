@@ -1,5 +1,6 @@
-import 'detail_screen.dart';
 import 'package:flutter/material.dart';
+import 'detail_screen.dart';
+import 'asset_thumbnail.dart';
 
 import 'dart:io'; // ファイルやディレクトリを操作するためのライブラリ
 import 'package:photo_manager/photo_manager.dart';
@@ -60,7 +61,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  List<File> _images = [];
+  // List<File> _images = [];
   List<AssetEntity> _assets = [];
 
   // initStateは、画面が作成されたときに一度だけ呼ばれる特別な場所です
@@ -118,6 +119,7 @@ class _MyHomePageState extends State<MyHomePage> {
       );
 
       // ④ AssetEntityをFileオブジェクトに変換
+      /*
       List<File> imageFiles = [];
       for (var asset in assets) {
         // タイプが画像のものだけを対象にする
@@ -128,11 +130,14 @@ class _MyHomePageState extends State<MyHomePage> {
           }
         }
       }
+      */
 
       setState(() {
-        _images = imageFiles;
+        // _images = imageFiles;
+        _assets = assets;
       });
-      print('${_images.length} 個の画像が見つかりました。');
+      // print('${_images.length} 個の画像が見つかりました。');
+      print('${_assets.length} 個の画像が見つかりました。');
     } else {
       print('Pixiv アルバムが見つかりませんでした。');
       // デバッグ用に、見つかったすべてのアルバム名を表示してみる
@@ -154,7 +159,8 @@ class _MyHomePageState extends State<MyHomePage> {
         // title: Text(widget.title),
         title: const Text('Pixiv Viewer'),
       ),
-      body: _images.isEmpty
+      // body: _images.isEmpty
+      body: _assets.isEmpty
           ? const Center(
               // 画像がまだない場合は、ローディングインジケーターを表示
               child: CircularProgressIndicator(),
@@ -167,24 +173,28 @@ class _MyHomePageState extends State<MyHomePage> {
                 mainAxisSpacing: 2.0, // アイテム間の垂直方向のスペース
               ),
               // 表示するアイテムの総数
-              itemCount: _images.length,
+              // itemCount: _images.length,
+              itemCount: _assets.length,
               // 各アイテム（グリッドの1マス）をどのように描画するかを定義
               itemBuilder: (BuildContext context, int index) {
-                final imageFile = _images[index];
+                // final imageFile = _images[index];
+                final asset = _assets[index];
                 return GestureDetector(
-                  onTap: () {
-                    // 画像がタップされたときの処理
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DetailScreen(imageFile: imageFile),
-                      ),
-                    );
+                  onTap: () async {
+                    // ← async を追加
+                    // 詳細画面に遷移する直前に、高解像度のFileを取得する
+                    final file = await asset.file;
+                    if (file != null && mounted) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DetailScreen(imageFile: file),
+                        ),
+                      );
+                    }
                   },
-                  child: Image.file(
-                    imageFile,
-                    fit: BoxFit.cover, // 画像を枠に合わせてトリミング
-                  ),
+                  // ここで自作した AssetThumbnail ウィジェットを使う
+                  child: AssetThumbnail(asset: asset), // ← 修正点
                 );
               },
             ),
