@@ -3,6 +3,8 @@ import 'permission_screen.dart';
 
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'settings_provider.dart';
+import 'package:provider/provider.dart';
 
 class DispatchScreen extends StatefulWidget {
   const DispatchScreen({super.key});
@@ -19,6 +21,9 @@ class _DispatchScreenState extends State<DispatchScreen> {
   }
 
   Future<void> _dispatch() async {
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    await settings.init();
+
     final status = await Permission.photos.status;
 
     if (!mounted) return;

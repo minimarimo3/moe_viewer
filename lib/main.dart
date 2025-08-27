@@ -80,6 +80,7 @@ class _MyHomePageState extends State<MyHomePage> {
     //  具体的には、もうちょい軽い権限（例えば、写真ライブラリへのアクセス）を要求する
     //  PhotoManager.requestPermissionExtend();
 
+    /*
     // 画面の初回描画が終わった直後に処理を開始させるおまじない
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       // --- 1. 設定の読み込みを待つ ---
@@ -102,6 +103,8 @@ class _MyHomePageState extends State<MyHomePage> {
       }
       */
     });
+    */
+    _loadImages();
   }
 
   /*
@@ -311,7 +314,12 @@ Future<void> _loadImages() async {
                   }
                 */
                 },
-                child: thumbnailWidget,
+                // child: thumbnailWidget,
+                child: Hero(
+                  // タグには、画像ごとにユニークなもの（ファイルパスなど）を指定
+                  tag: 'imageHero_$index',
+                  child: thumbnailWidget,
+                ),
               );
             },
           );

@@ -164,10 +164,19 @@ class DetailScreen extends StatefulWidget {
   State<DetailScreen> createState() => _DetailScreenState();
 }
 
-class _DetailScreenState extends State<DetailScreen> {
+class _DetailScreenState extends State<DetailScreen> with TickerProviderStateMixin {
   late PageController _pageController;
-  bool _isUiVisible = true; // ★★★ UIの表示状態を管理する変数
+  bool _isUiVisible = true;
   late int _currentIndex;
+  // ★★★ ダブルタップ時のアニメーションを管理するコントローラー ★★★
+  late AnimationController _animationController;
+  Animation<Matrix4>? _animation;
+
+  // ★★★ InteractiveViewerの拡大・移動状態を直接操作するコントローラー ★★★
+  final _transformationController = TransformationController();
+
+  // ★★★ PageViewのスワイプを有効/無効にするための変数 ★★★
+  bool _isPagingEnabled = true;
 
   Future<void> _showImageDetails(BuildContext context, File imageFile) async {
     // 画像のバイトデータを読み込み
@@ -299,7 +308,23 @@ class _DetailScreenState extends State<DetailScreen> {
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
     _saveCurrentState();
+
+    // ★★★ InteractiveViewerのスケール（拡大率）が変化したのをリッスンする ★★★
+    _transformationController.addListener(() {
+      // 拡大率が1.0（等倍）でない場合、ページングを無効にする
+      final isZoomed = _transformationController.value.getMaxScaleOnAxis() != 1.0;
+      if (isZoomed != !_isPagingEnabled) {
+        setState(() {
+          _isPagingEnabled = !isZoomed;
+        });
+      }
+    });
+
     // ★★★ 画面の初回描画が終わった後に、最初の先読みを実行 ★★★
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _precacheAdjacentImages(_currentIndex);
@@ -326,9 +351,42 @@ class _DetailScreenState extends State<DetailScreen> {
 
   @override
   void dispose() {
+    // NOTE: 追加忘れ？
+    _pageController.dispose();
     // ★★★ この画面を離れるときに、必ずシステムUIを元に戻す
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _animationController.dispose(); // ★★★ disposeを追加
+    _transformationController.dispose(); // ★★★ disposeを追加
     super.dispose();
+  }
+
+  // ★★★ ダブルタップ時の処理 ★★★
+  void _onDoubleTap(TapDownDetails details) {
+    final position = details.localPosition;
+    final currentScale = _transformationController.value.getMaxScaleOnAxis();
+
+    Matrix4 endMatrix;
+    if (currentScale > 1.0) {
+      // 現在拡大されている場合は、元に戻す
+      endMatrix = Matrix4.identity();
+    } else {
+      // 拡大されていない場合は、タップした位置を中心に2.5倍に拡大
+      endMatrix = Matrix4.identity()
+        ..translate(-position.dx * 1.5, -position.dy * 1.5)
+        ..scale(2.5);
+    }
+
+    // アニメーションを開始
+    _animation = Matrix4Tween(
+      begin: _transformationController.value,
+      end: endMatrix,
+    ).animate(
+      CurveTween(curve: Curves.easeOut).animate(_animationController),
+    );
+    _animation!.addListener(() {
+      _transformationController.value = _animation!.value;
+    });
+    _animationController.forward(from: 0);
   }
 
   // ★★★ UIの表示/非表示を切り替える関数 ★★★
@@ -378,8 +436,12 @@ class _DetailScreenState extends State<DetailScreen> {
       // ★★★ 画面全体をGestureDetectorで囲んでタップを検知
       body: GestureDetector(
         onTap: _toggleUiVisibility,
+        onDoubleTapDown: _onDoubleTap,
         child: PageView.builder(
           controller: _pageController,
+          physics: _isPagingEnabled
+              ? const PageScrollPhysics()
+              : const NeverScrollableScrollPhysics(),
           onPageChanged: (index) {
             setState(() {
               _currentIndex = index;
@@ -389,8 +451,27 @@ class _DetailScreenState extends State<DetailScreen> {
           },
           itemCount: widget.imageFileList.length,
           itemBuilder: (context, index) {
+            /*
             return InteractiveViewer(
               child: Center(child: Image.file(widget.imageFileList[index])),
+            );
+            */
+            return InteractiveViewer(
+              transformationController: _transformationController,
+              onInteractionEnd: (details) {
+                if (_transformationController.value.getMaxScaleOnAxis() <= 1.0) {
+                  // 必要ならここで isPagingEnabled を true に戻すロジックを追加
+                  _isPagingEnabled = true;
+                }
+              },
+              child: Center(
+                // ★★★ ここからHeroウィジェットを追加 ★★★
+                child: Hero(
+                  // メイン画面と同じルールでタグを生成
+                  tag: 'imageHero_$index',
+                  child: Image.file(widget.imageFileList[index]),
+                ),
+              ),
             );
           },
         ),
