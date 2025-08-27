@@ -41,6 +41,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Moe Viewer',
       theme: ThemeData(
+        fontFamily: 'NotoSansJP',
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
       // home: const MyHomePage(title: 'Moe Viewer Home Page'),
