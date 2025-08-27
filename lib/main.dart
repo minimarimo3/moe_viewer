@@ -180,7 +180,9 @@ Future<void> _loadImages() async {
   setState(() { _status = LoadingStatus.loading; });
 
   final settings = Provider.of<SettingsProvider>(context, listen: false);
-  final selectedPaths = settings.selectedPaths;
+  final enabledFolders = settings.folderSettings.where((f) => f.isEnabled).toList();
+  final selectedPaths = enabledFolders.map((f) => f.path).toList();
+  // final selectedPaths = settings.selectedPaths;
 
   List<dynamic> allDisplayItems = [];
   List<File> allDetailFiles = []; // ★★★ 詳細画面用のリストもここで作成

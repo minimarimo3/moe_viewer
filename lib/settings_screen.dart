@@ -98,7 +98,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   String? result = await FilePicker.platform.getDirectoryPath();
                   if (result != null) {
                     // 選択されたパスをProviderに追加
-                    settings.addPath(result);
+                    // settings.addPath(result);
+                    settings.addFolder(result);
                   }
                 },
               ),
@@ -112,10 +113,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               // settings.selectedPaths の内容をリスト表示
-              for (String path in settings.selectedPaths)
+              // for (String path in settings.selectedPaths)
+              for (FolderSetting folder in settings.folderSettings)
                 ListTile(
                   // ★★★ 条件に応じてアイコンを表示 ★★★
-                  leading: (_isRestrictedPath(path) && !_hasFullAccess)
+                  // leading: (_isRestrictedPath(path) && !_hasFullAccess)
+                  leading: (_isRestrictedPath(folder.path) && !_hasFullAccess)
                       ? Tooltip(
                           // アイコンにマウスカーソルを合わせるとメッセージが出る
                           message: 'このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。',
@@ -126,23 +129,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         )
                       : Icon(Icons.folder_outlined), // 通常のフォルダアイコン
                   title: Text(
-                    path.split('/').last, // パスの最後の部分（フォルダ名）だけ表示
+                    folder.path.split('/').last, // パスの最後の部分（フォルダ名）だけ表示
                     style: TextStyle(
                       // ★★★ 条件に応じて文字色を少し薄くする ★★★
-                      color: (_isRestrictedPath(path) && !_hasFullAccess)
+                      color: (_isRestrictedPath(folder.path) && !_hasFullAccess)
                           ? Theme.of(context).disabledColor
                           : null,
                     ),
                   ),
-                  subtitle: Text(path, style: TextStyle(fontSize: 12)),
+                  subtitle: Text(folder.path, style: TextStyle(fontSize: 12)),
+                  /*
                   trailing: IconButton(
                     icon: const Icon(Icons.delete_outline),
                     onPressed: () {
-                      settings.removePath(path);
+                      // settings.removePath(path);
+                      settings.removeFolder(folder.path);
                     },
                   ),
+                  */
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Checkbox(
+                        value: folder.isEnabled,
+                        onChanged: (bool? value) {
+                          if (value != null) {
+                            settings.toggleFolderEnabled(folder.path);
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () {
+                          settings.removeFolder(
+                            folder.path,
+                          ); // ★★★ removeFolderを呼び出し
+                        },
+                      ),
+                    ],
+                  ),
                   onTap: () {
-                    if (_isRestrictedPath(path) && !_hasFullAccess) {
+                    // if (_isRestrictedPath(path) && !_hasFullAccess) {
+                    if (_isRestrictedPath(folder.path) && !_hasFullAccess) {
                       showInfoDialog(
                         context,
                         title: '追加の権限が必要です',
