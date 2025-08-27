@@ -16,9 +16,7 @@ class DetailScreen extends StatelessWidget {
       backgroundColor: Colors.black,
       body: Center(
         // InteractiveViewerで囲むだけで、ピンチ操作による拡大・縮小が可能になる
-        child: InteractiveViewer(
-          child: Image.file(imageFile),
-        ),
+        child: InteractiveViewer(child: Image.file(imageFile)),
       ),
     );
   }

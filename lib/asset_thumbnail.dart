@@ -5,10 +5,7 @@ import 'package:photo_manager/photo_manager.dart';
 class AssetThumbnail extends StatefulWidget {
   final AssetEntity asset;
 
-  const AssetThumbnail({
-    super.key,
-    required this.asset,
-  });
+  const AssetThumbnail({super.key, required this.asset});
 
   @override
   State<AssetThumbnail> createState() => _AssetThumbnailState();
@@ -28,7 +25,8 @@ class _AssetThumbnailState extends State<AssetThumbnail> {
     final data = await widget.asset.thumbnailDataWithSize(
       const ThumbnailSize(200, 200),
     );
-    if (mounted) { // ウィジェットがまだ画面に存在する場合のみ更新
+    if (mounted) {
+      // ウィジェットがまだ画面に存在する場合のみ更新
       setState(() {
         _thumbnailData = data;
       });
@@ -42,9 +40,6 @@ class _AssetThumbnailState extends State<AssetThumbnail> {
       return Container(color: Colors.grey[300]);
     }
     // データ取得後はImage.memoryで画像を表示
-    return Image.memory(
-      _thumbnailData!,
-      fit: BoxFit.cover,
-    );
+    return Image.memory(_thumbnailData!, fit: BoxFit.cover);
   }
 }
