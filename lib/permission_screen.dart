@@ -47,11 +47,23 @@ class _PermissionScreenState extends State<PermissionScreen> {
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 20),
-                  Image.asset('assets/images/explanation.gif'),
+                  const Text(
+                    "はじめに",
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  ),
+                  const Text(
+                    "このアプリは@minimarimo3が個人で開発しているものです。\n\n"
+                    "アプリのレシピ（ソースコード）はGitHubで公開されています。\n\n"
+                    "バグ報告や機能要望なんかは気軽に設定の「フィードバック」からどうぞ！"
+                  ),
+                  const SizedBox(height: 20),
+                  // Image.asset('assets/images/explanation.gif'),
+                  const Text("ここにgif"),
                   const SizedBox(height: 20),
                   const Text(
-                    "このアプリを動作させるには、デバイスの写真へのアクセス許可が必要です。\n\n"
-                    "あなたの写真データが外部に送信されることは決してありません。全ての処理はあなたのデバイス内で完結します。",
+                    "PixivフォルダやDownloadした画像、Twitterで保存した画像にアクセスするために、「デバイスの写真へのアクセス許可」というものが必要です。\n\n"
+                    "フォルダの中身が外部に漏れるとかそういうヤバいことは起きないので安心してください。\n\n"
+                    "下のボタンを押して「写真へのアクセスを全て許可」を押してください。\n\n",
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
