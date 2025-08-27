@@ -34,11 +34,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Moe Viewer',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const MyHomePage(title: 'Moe Viewer Home Page'),
     );
   }
 }
@@ -82,50 +82,6 @@ class _MyHomePageState extends State<MyHomePage> {
       // await PhotoManager.openSetting();
     }
   }
-
-  /*
-  // photo_managerを使って画像を読み込む新しい関数
-  Future<void> _loadImages() async {
-    // ① すべてのアルバム（フォルダ）を取得
-    final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
-      // .nomedia対策
-      filterOption: FilterOptionGroup(includeHiddenAssets: true),
-    );
-
-    if (albums.isEmpty) {
-      print("アルバムが見つかりませんでした。");
-      return;
-    }
-
-    // ② "Pixiv" という名前のアルバムを探す
-    AssetPathEntity? pixivAlbum;
-    for (var album in albums) {
-      if (album.name.toLowerCase() == 'pixiv') {
-        // 小文字に変換して比較
-        pixivAlbum = album;
-        break;
-      }
-    }
-
-    if (pixivAlbum != null) {
-      // ③ アルバム内のすべてのアセット（画像・動画）を取得
-      final List<AssetEntity> assets = await pixivAlbum.getAssetListRange(
-        start: 0,
-        end: await pixivAlbum.assetCountAsync,
-      );
-
-      setState(() {
-        _assets = assets;
-      });
-      print('${_assets.length} 個の画像が見つかりました。');
-    } else {
-      print('Pixiv アルバムが見つかりませんでした。');
-      // デバッグ用に、見つかったすべてのアルバム名を表示してみる
-      print('見つかったアルバム: ${albums.map((a) => a.name).toList()}');
-    }
-  }
-  */
-  // in _MyHomePageState class
 
   Future<void> _loadImages() async {
     // Providerから設定データを取得（listen: false で、UIの再構築は要求しない）
