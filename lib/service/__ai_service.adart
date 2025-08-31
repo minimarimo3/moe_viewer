@@ -1,0 +1,161 @@
+import 'dart:io';
+import 'dart:developer';
+
+import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
+import 'package:tflite_flutter/tflite_flutter.dart';
+
+class AiService {
+  Interpreter? _interpreter;
+  List<String>? _labels;
+
+  // ★★★ ファイルパスと入力サイズを新しいモデル用に変更 ★★★
+  static const String _modelPath = 'assets/models/model.tflite';
+  static const String _labelPath = 'assets/models/tags.csv';
+  static const int _inputSize = 448;
+
+  // ★★★ シングルトンパターンで、AiServiceのインスタンスをアプリ内で唯一にする
+  static final AiService _instance = AiService._internal();
+  factory AiService() => _instance;
+  AiService._internal();
+
+  Future<void> loadModel() async {
+    if (_interpreter != null) return;
+
+    try {
+      // ★★★ ハードウェアアクセラレーションを有効にするためのオプションを作成 ★★★
+      final options = InterpreterOptions();
+
+      // デバイスに応じて適切なGPUデリゲートを追加
+      // GpuDelegateV2はAndroid用、GpuDelegateはiOS用
+      if (Platform.isAndroid) {
+        options.addDelegate(GpuDelegateV2());
+      } else if (Platform.isIOS) {
+        options.addDelegate(GpuDelegate());
+      }
+
+      // ★★★ オプションを渡してInterpreterをロード ★★★
+      _interpreter = await Interpreter.fromAsset(_modelPath, options: options);
+      log('AI Model loaded successfully with GPU delegate.');
+    } catch (e) {
+      log('GPUデリゲートでのモデルロードに失敗しました。CPUにフォールバックします: $e');
+      // ★★★ もしGPUでのロードに失敗したら、CPUで再試行する（フォールバック） ★★★
+      try {
+        _interpreter = await Interpreter.fromAsset(_modelPath);
+        log('AI Model loaded successfully with CPU.');
+      } catch (e2) {
+        log('CPUでのモデルロードにも失敗しました: $e2');
+      }
+    }
+
+    // モデルが正常にロードされた場合のみ、続きの処理を実行
+    if (_interpreter != null) {
+      // ... (AIモデルの健康診断とラベル読み込みのコードはここに移動) ...
+      final inputTensors = _interpreter!.getInputTensors();
+      log('--- AI Model Input Details ---');
+      for (var tensor in inputTensors) {
+        log('Shape: ${tensor.shape}, Type: ${tensor.type}');
+      }
+
+      final labelString = await rootBundle.loadString(_labelPath);
+      _labels = labelString
+          .split('\n')
+          .where((line) => line.isNotEmpty)
+          .map((line) {
+            final parts = line.split(',');
+            if (parts.length > 1) {
+              return parts[1].replaceAll('"', '').trim();
+            }
+            return '';
+          })
+          .where((tag) => tag.isNotEmpty)
+          .toList();
+      log('Labels loaded successfully. Total: ${_labels!.length}');
+    }
+  }
+
+  void dispose() {
+    _interpreter?.close();
+    _interpreter = null;
+    log('AI Model disposed.');
+  }
+
+  List<List<List<List<double>>>> _preProcessImage(File imageFile) {
+    final imageBytes = imageFile.readAsBytesSync();
+    img.Image? image = img.decodeImage(imageBytes);
+
+    if (image == null) {
+      throw Exception('Failed to decode image: ${imageFile.path}');
+    }
+
+    // ★★★ 1. 画像の比率を保ったままリサイズ＆クロップ ★★★
+    final resizedImage = img.copyResizeCropSquare(image, size: _inputSize);
+
+    // ★★★ 2. モデルが学習したのと同じ、標準的な方法で色を正規化 ★★★
+    // ImageNetの標準的な正規化に使われる平均値と標準偏差
+    final mean = [0.485, 0.456, 0.406];
+    final std = [0.229, 0.224, 0.225];
+
+    final input = List.generate(
+      1,
+      (i) => List.generate(
+        _inputSize,
+        (y) => List.generate(
+          3,
+          (c) => List.generate(_inputSize, (x) {
+            final pixel = resizedImage.getPixel(x, y);
+            double value;
+            switch (c) {
+              case 0: // Red
+                value = pixel.r / 255.0;
+                break;
+              case 1: // Green
+                value = pixel.g / 255.0;
+                break;
+              default: // Blue
+                value = pixel.b / 255.0;
+                break;
+            }
+            // (ピクセル値 - 平均値) / 標準偏差
+            return (value - mean[c]) / std[c];
+          }),
+        ),
+      ),
+    );
+
+    return input;
+  }
+
+  Future<List<String>> analyzeImage(File imageFile) async {
+    if (_interpreter == null || _labels == null) {
+      await loadModel();
+      if (_interpreter == null || _labels == null) return ['AIモデル未ロード'];
+    }
+
+    try {
+      // ★★★ reshapeが不要になり、直接inputを渡す ★★★
+      final input = _preProcessImage(imageFile);
+
+      var output = List.filled(
+        1 * _labels!.length,
+        0.0,
+      ).reshape([1, _labels!.length]);
+
+      _interpreter!.run(input, output);
+
+      const double confidenceThreshold = 0.35;
+      List<String> recognizedTags = [];
+      for (var i = 0; i < _labels!.length; i++) {
+        if (output[0][i] > confidenceThreshold) {
+          recognizedTags.add(_labels![i].replaceAll('_', ' '));
+        }
+      }
+
+      if (recognizedTags.isEmpty) return ['タグが見つかりませんでした'];
+      return recognizedTags;
+    } catch (e) {
+      log('Error during image analysis: $e');
+      return ['AI解析エラー'];
+    }
+  }
+}

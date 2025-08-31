@@ -1,0 +1,882 @@
+// lib/services/ai_service.dart
+
+import 'dart:math' as math;
+import 'dart:async';
+import 'dart:convert'; // base64Encodeを使うためにインポート
+import 'dart:developer';
+import 'dart:io';
+import 'dart:isolate';
+import 'dart:typed_data';
+
+import '../service/ai_model_definitions.dart';
+
+import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
+import 'package:tflite_flutter/tflite_flutter.dart';
+
+// --- Isolate（別部署）で実行されるコード ---
+
+// Isolateに渡すデータの設計図
+class IsolateAnalyzeRequest {
+  final String filePath;
+  final String labelPath;
+  final SendPort replyPort;
+  IsolateAnalyzeRequest(this.filePath, this.labelPath, this.replyPort);
+}
+
+void _aiIsolateEntry(IsolateInitMessage initMessage) async {
+  final mainSendPort = initMessage.sendPort;
+  final token = initMessage.token;
+  BackgroundIsolateBinaryMessenger.ensureInitialized(token);
+
+  final isolateReceivePort = ReceivePort();
+  mainSendPort.send(isolateReceivePort.sendPort);
+
+  Interpreter? interpreter;
+  List<String>? labels;
+  try {
+    final directory = await getApplicationSupportDirectory();
+
+    // final modelPath = '${directory.path}/wd-vit-tagger-v3_float32.tflite';
+    // final labelPath = '${directory.path}/selected_tags.csv';
+
+    // final modelPath = '${directory.path}/model.tflite';
+    // final labelPath = '${directory.path}/tags.csv';
+
+    // final modelPath = '${directory.path}/camie-tagger_float32.tflite';
+    // final labelPath = '${directory.path}/val_dataset.csv';
+
+    final modelPath = '${(await getApplicationSupportDirectory()).path}/${initMessage.modelFileName}';
+    final labelPath = '${(await getApplicationSupportDirectory()).path}/${initMessage.labelFileName}';
+
+    interpreter = await Interpreter.fromFile(File(modelPath));
+    final labelString = await File(labelPath).readAsString();
+    labels = labelString
+        .split('\n')
+        .where((line) => line.isNotEmpty)
+        .map((line) {
+          final parts = line.split(',');
+          return parts.length > 1 ? parts[1].replaceAll('"', '').trim() : '';
+        })
+        .where((tag) => tag.isNotEmpty)
+        .toList();
+    log('AI Isolate: Model and labels loaded successfully.');
+  } catch (e) {
+    log('AI Isolate: Failed to load model or labels: $e');
+  }
+
+  mainSendPort.send('ready'); // 準備完了をメインスレッドに通知
+
+  await for (final request in isolateReceivePort) {
+    if (request is IsolateAnalyzeRequest) {
+      if (interpreter == null || labels == null) {
+        request.replyPort.send({'error': 'AIモデル未ロード'});
+        continue;
+      }
+      try {
+        final result = _analyze(interpreter, labels, request.filePath);
+        request.replyPort.send(result);
+      } catch (e) {
+        log('AI Isolate: Error during analysis: $e');
+        request.replyPort.send({'error': 'AI解析エラー'});
+      }
+    } else if (request == 'close') {
+      interpreter?.close();
+      isolateReceivePort.close();
+      break;
+    }
+  }
+  log('AI Isolate: Closed.');
+}
+
+// Isolate内で実行される純粋な解析ロジック
+/*
+Map<String, dynamic> _analyze(Interpreter interpreter, List<String> labels, String filePath) {
+  const int inputSize = 448;
+  
+  final imageFile = File(filePath);
+  final imageBytes = imageFile.readAsBytesSync();
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) throw Exception('Failed to decode');
+  
+  final resizedImage = img.copyResizeCropSquare(image, size: inputSize);
+  
+  // ★★★ [1, 3, 448, 448] (Channels-First) 形式のTensorを作成 ★★★
+  final inputFloats = Float32List(1 * 3 * inputSize * inputSize);
+  int pixelIndex = 0;
+  final mean = [0.485, 0.456, 0.406];
+  final std = [0.229, 0.224, 0.225];
+
+  for (int y = 0; y < inputSize; y++) {
+    for (int x = 0; x < inputSize; x++) {
+      final pixel = resizedImage.getPixel(x, y);
+      inputFloats[pixelIndex + (0 * inputSize * inputSize)] = ((pixel.r / 255.0) - mean[0]) / std[0]; // R
+      inputFloats[pixelIndex + (1 * inputSize * inputSize)] = ((pixel.g / 255.0) - mean[1]) / std[1]; // G
+      inputFloats[pixelIndex + (2 * inputSize * inputSize)] = ((pixel.b / 255.0) - mean[2]) / std[2]; // B
+      pixelIndex++;
+    }
+  }
+  final inputTensor = inputFloats.reshape([1, 3, inputSize, inputSize]);
+
+  var output = List.filled(1 * labels.length, 0.0).reshape([1, labels.length]);
+  interpreter.run(inputTensor, output);
+
+  const double confidenceThreshold = 0.35;
+  List<String> recognizedTags = [];
+  for (var i = 0; i < labels.length; i++) {
+    if (output[0][i] > confidenceThreshold) {
+      recognizedTags.add(labels[i].replaceAll('_', ' '));
+    }
+  }
+
+  // ★★★ デバッグ用に前処理後の画像をエンコードして返す ★★★
+  final pngBytes = img.encodePng(resizedImage);
+  final base64Image = base64Encode(pngBytes);
+
+  return {
+    'tags': recognizedTags.isEmpty ? ['タグが見つかりませんでした'] : recognizedTags,
+    'image': base64Image,
+  };
+}
+
+Map<String, dynamic> _analyze(Interpreter interpreter, List<String> labels, String filePath) {
+  log('AI Isolate: 解析開始 $filePath');
+  const int inputSize = 448;
+  
+  // --- 前処理 ---
+  final imageFile = File(filePath);
+  final imageBytes = imageFile.readAsBytesSync();
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) throw Exception('Failed to decode');
+  
+  final resizedImage = img.copyResizeCropSquare(image, size: inputSize);
+  
+  // ★★★ データを[1, 3, 448, 448]の形状に合わせてFloat32Listで作成 ★★★
+  final inputFloats = Float32List(1 * 3 * inputSize * inputSize);
+  int pixelIndex = 0;
+  final mean = [0.485, 0.456, 0.406];
+  final std = [0.229, 0.224, 0.225];
+
+  for (int y = 0; y < inputSize; y++) {
+    for (int x = 0; x < inputSize; x++) {
+      final pixel = resizedImage.getPixel(x, y);
+      // [C, H, W]の順番で値を代入
+      inputFloats[pixelIndex + (0 * inputSize * inputSize)] = ((pixel.r / 255.0) - mean[0]) / std[0]; // R
+      inputFloats[pixelIndex + (1 * inputSize * inputSize)] = ((pixel.g / 255.0) - mean[1]) / std[1]; // G
+      inputFloats[pixelIndex + (2 * inputSize * inputSize)] = ((pixel.b / 255.0) - mean[2]) / std[2]; // B
+      pixelIndex++;
+    }
+  }
+  
+  // TFLiteが期待する形状 [1, 3, 448, 448] に変形
+  final inputTensor = inputFloats.reshape([1, 3, inputSize, inputSize]);
+  
+  // --- 推論 ---
+  var output = List.filled(1 * labels.length, 0.0).reshape([1, labels.length]);
+  interpreter.run(inputTensor, output);
+
+  // --- 結果解析 (変更なし) ---
+  const double confidenceThreshold = 0.35;
+  List<String> recognizedTags = [];
+  for (var i = 0; i < labels.length; i++) {
+    if (output[0][i] > confidenceThreshold) {
+      recognizedTags.add(labels[i].replaceAll('_', ' '));
+    }
+  }
+  
+  // --- デバッグ用画像の返却 (変更なし) ---
+  final pngBytes = img.encodePng(resizedImage);
+  final base64Image = base64Encode(pngBytes);
+
+  return {
+    'tags': recognizedTags.isEmpty ? ['タグが見つかりませんでした'] : recognizedTags,
+    'image': base64Image,
+  };
+}
+*/
+
+// in lib/services/ai_service.dart
+
+// lib/services/ai_service.dart の _analyze 関数
+
+/*
+Map<String, dynamic> _analyze(Interpreter interpreter, List<String> labels, String filePath) {
+  const int inputSize = 448;
+  
+  // --- 前処理 ---
+  final imageFile = File(filePath);
+  final imageBytes = imageFile.readAsBytesSync();
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) throw Exception('Failed to decode');
+  
+  final resizedImage = img.copyResizeCropSquare(image, size: inputSize);
+  
+  // ★★★ データ構造を[1, 高さ, 幅, チャンネル]、つまり [1, 448, 448, 3] に変更 ★★★
+  final inputTensor = List.generate(1, (_) => List.generate(inputSize, (_) => List.generate(3, (_) => List.generate(inputSize, (_) => 0.0))));
+  
+  final mean = [0.485, 0.456, 0.406];
+  final std = [0.229, 0.224, 0.225];
+
+  for (int y = 0; y < inputSize; y++) {
+    for (int x = 0; x < inputSize; x++) {
+      final pixel = resizedImage.getPixel(x, y);
+      // ★★★ 値を代入する順番を変更 ★★★
+      inputTensor[0][y][0][x] = ((pixel.r / 255.0) - mean[0]) / std[0]; // R
+      inputTensor[0][y][1][x] = ((pixel.g / 255.0) - mean[1]) / std[1]; // G
+      inputTensor[0][y][2][x] = ((pixel.b / 255.0) - mean[2]) / std[2]; // B
+    }
+  }
+
+  // --- 推論 (変更なし) ---
+  var output = List.filled(1 * labels.length, 0.0).reshape([1, labels.length]);
+  interpreter.run(inputTensor, output);
+
+  // --- 結果解析 (変更なし) ---
+  const double confidenceThreshold = 0.35;
+  List<String> recognizedTags = [];
+  for (var i = 0; i < labels.length; i++) {
+    if (output[0][i] > confidenceThreshold) {
+      recognizedTags.add(labels[i].replaceAll('_', ' '));
+    }
+  }
+  
+  // --- デバッグ用画像の返却 (変更なし) ---
+  final pngBytes = img.encodePng(resizedImage);
+  final base64Image = base64Encode(pngBytes);
+
+  return {
+    'tags': recognizedTags.isEmpty ? ['タグが見つかりませんでした'] : recognizedTags,
+    'image': base64Image,
+  };
+}
+*/
+// in lib/services/ai_service.dart
+// in lib/services/ai_service.dart
+
+/*
+Map<String, dynamic> _analyze(Interpreter interpreter, List<String> labels, String filePath) {
+  const int inputSize = 448;
+  
+  // --- 前処理 ---
+  final imageFile = File(filePath);
+  final imageBytes = imageFile.readAsBytesSync();
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) throw Exception('Failed to decode');
+
+  final resizedImage = img.copyResizeCropSquare(image, size: inputSize);
+
+
+
+  // 1 * 3 * 448 * 448 のサイズの平坦なリストを準備
+  var inputTensor = Float32List(1 * 3 * 448 * 448);
+  var pixels = 448 * 448; // 1チャンネルあたりのピクセル数
+
+  // ピクセルをループして、直接NCHW形式のインデックスに値を格納する
+  for (var y = 0; y < 448; y++) {
+    for (var x = 0; x < 448; x++) {
+      var pixel = resizedImage.getPixel(x, y);
+
+      // NCHW のメモリレイアウトに合わせてインデックスを計算
+      // [R, R, R, ..., G, G, G, ..., B, B, B, ...] の順になるように格納
+      
+      // Red チャンネルの平面に書き込む
+      inputTensor[y * 448 + x] = pixel.r / 255.0;
+      
+      // Green チャンネルの平面に書き込む (R平面の直後から)
+      inputTensor[pixels + y * 448 + x] = pixel.g / 255.0;
+      
+      // Blue チャンネルの平面に書き込む (G平面の直後から)
+      inputTensor[pixels * 2 + y * 448 + x] = pixel.b / 255.0;
+    }
+  }
+
+  // --- これ以降の推論、結果解析、画像返却のロジックは、以前の正常に動作していたものと全く同じです ---
+  var output = List.filled(1 * labels.length, 0.0).reshape([1, labels.length]);
+  interpreter.run(inputTensor, output);
+
+  const double confidenceThreshold = 0.25;
+  List<String> recognizedTags = [];
+  for (var i = 0; i < labels.length; i++) {
+    if (output[0][i] > confidenceThreshold) {
+      recognizedTags.add(labels[i].replaceAll('_', ' '));
+    }
+  }
+  
+  final pngBytes = img.encodePng(resizedImage);
+  final base64Image = base64Encode(pngBytes);
+
+  return {
+    'tags': recognizedTags.isEmpty ? ['タグが見つかりませんでした'] : recognizedTags,
+    'image': base64Image,
+  };
+}
+*/
+
+// in lib/services/ai_service.dart
+
+/*
+Map<String, dynamic> _analyze(Interpreter interpreter, List<String> labels, String filePath) {
+  log("解析を開始：$filePath");
+  const int inputSize = 448;
+  
+  // --- 前処理 ---
+  final imageFile = File(filePath);
+  final imageBytes = imageFile.readAsBytesSync();
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) throw Exception('Failed to decode');
+  
+  // アスペクト比を保ったままリサイズ
+  img.Image resizedImage;
+  if (image.width > image.height) {
+    resizedImage = img.copyResize(image, width: inputSize);
+  } else {
+    resizedImage = img.copyResize(image, height: inputSize);
+  }
+
+  // 正方形のキャンバスを作成し、中央に配置（パディング）
+  final paddedImage = img.Image(width: inputSize, height: inputSize, numChannels: 3);
+  img.fill(paddedImage, color: img.ColorRgb8(0, 0, 0));
+  
+  final offsetX = (inputSize - resizedImage.width) ~/ 2;
+  final offsetY = (inputSize - resizedImage.height) ~/ 2;
+  
+  img.compositeImage(paddedImage, resizedImage, dstX: offsetX, dstY: offsetY);
+
+  // これ以降の正規化とデータ構造は、あなたが正しかったもの
+  final inputTensor = List.generate(1, (_) => List.generate(inputSize, (_) => List.generate(3, (_) => List.generate(inputSize, (_) => 0.0))));
+
+  for (int y = 0; y < inputSize; y++) {
+    for (int x = 0; x < inputSize; x++) {
+      final pixel = paddedImage.getPixel(x, y);
+      inputTensor[0][y][0][x] = pixel.b / 255.0;
+      inputTensor[0][y][1][x] = pixel.g / 255.0;
+      inputTensor[0][y][2][x] = pixel.r / 255.0;
+    }
+  }
+
+  // --- 推論 (変更なし) ---
+  var output = List.filled(1 * labels.length, 0.0).reshape([1, labels.length]);
+  interpreter.run(inputTensor, output);
+
+  // --- 結果解析 (変更なし) ---
+  const double confidenceThreshold = 0.35;
+  List<String> recognizedTags = [];
+  for (var i = 0; i < labels.length; i++) {
+    if (output[0][i] > confidenceThreshold) {
+      recognizedTags.add(labels[i].replaceAll('_', ' '));
+    }
+  }
+  log("解析完了：${recognizedTags.join(', ')}");
+  
+  // --- デバッグ用画像の返却 (変更なし) ---
+  final pngBytes = img.encodePng(paddedImage);
+  final base64Image = base64Encode(pngBytes);
+
+  return {
+    'tags': recognizedTags.isEmpty ? ['タグが見つかりませんでした'] : recognizedTags,
+    'image': base64Image,
+  };
+}
+*/
+
+class IsolateInitMessage {
+  final SendPort sendPort;
+  final RootIsolateToken token;
+  final String modelFileName;
+  final String labelFileName;
+  final String inputType;
+  IsolateInitMessage(this.sendPort, this.token, this.modelFileName, this.labelFileName, this.inputType);
+}
+
+/// これはwdとかだとちゃんと動くデータ
+Map<String, dynamic> _analyze(Interpreter interpreter, List<String> labels, String filePath) {
+  log("解析を開始：$filePath");
+  const int inputSize = 448;
+
+  // --- 前処理 ---
+  final imageFile = File(filePath);
+  final imageBytes = imageFile.readAsBytesSync();
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) throw Exception('Failed to decode');
+
+  // アスペクト比を保ったままリサイズ
+  img.Image resizedImage;
+  if (image.width > image.height) {
+    resizedImage = img.copyResize(image, width: inputSize);
+  } else {
+    resizedImage = img.copyResize(image, height: inputSize);
+  }
+
+  // --- 正規化 (ImageNetのmean/stdを使用) ---
+  final mean = [0.485, 0.456, 0.406];
+  final std = [0.229, 0.224, 0.225];
+
+  // 正方形のキャンバスを作成し、中央に配置（パディング）
+  final paddedImage = img.Image(width: inputSize, height: inputSize, numChannels: 3);
+  // img.fill(paddedImage, color: img.ColorRgb8(255, 255, 255));
+  final backgroundColorR = (255 - mean[0]) / std[0];
+  final backgroundColorG = (255 - mean[1]) / std[1];
+  final backgroundColorB = (255 - mean[2]) / std[2];
+
+  img.fill(paddedImage, color: img.ColorFloat32.rgb(backgroundColorR, backgroundColorG, backgroundColorB));
+
+  final offsetX = (inputSize - resizedImage.width) ~/ 2;
+  final offsetY = (inputSize - resizedImage.height) ~/ 2;
+
+  var validImage = img.compositeImage(paddedImage, resizedImage, dstX: offsetX, dstY: offsetY);
+
+
+  // 入力テンソル [1, 448, 3, 448] (NCHW)
+  final inputTensor = List.generate(
+    1,
+    (_) => List.generate(
+      inputSize,
+      (_) => List.generate(
+        3,
+        (_) => List.generate(inputSize, (_) => 0.0),
+      ),
+    ),
+  );
+
+  for (int y = 0; y < inputSize; y++) {
+    for (int x = 0; x < inputSize; x++) {
+      // final pixel = paddedImage.getPixel(x, y);
+      final pixel = validImage.getPixel(x, y);
+
+      final r = pixel.r / 255.0;
+      final g = pixel.g / 255.0;
+      final b = pixel.b / 255.0;
+
+      // RGB の順に格納、正規化
+      // inputTensor[0][y][0][x] = (r - mean[0]) / std[0];
+      // inputTensor[0][y][1][x] = (g - mean[1]) / std[1];
+      // inputTensor[0][y][2][x] = (b - mean[2]) / std[2];
+      inputTensor[0][y][0][x] = b;
+      inputTensor[0][y][1][x] = g;
+      inputTensor[0][y][2][x] = r;
+    }
+  }
+
+  // --- 推論 ---
+  var output = List.filled(1 * labels.length, 0.0).reshape([1, labels.length]);
+  interpreter.run(inputTensor, output);
+
+  // --- 結果解析 ---
+  const double confidenceThreshold = 0.35;
+  List<String> recognizedTags = [];
+  for (var i = 0; i < labels.length; i++) {
+    if (output[0][i] > confidenceThreshold) {
+      recognizedTags.add(labels[i].replaceAll('_', ' '));
+    }
+  }
+  log("解析完了：${recognizedTags.join(', ')}");
+
+  // --- デバッグ用画像返却 ---
+  final pngBytes = img.encodePng(validImage);
+  final base64Image = base64Encode(pngBytes);
+
+  return {
+    'tags': recognizedTags.isEmpty ? ['タグが見つかりませんでした'] : recognizedTags,
+    'image': base64Image,
+  };
+}
+
+
+/*
+Map<String, dynamic> _analyze(Interpreter interpreter, List<String> labels, String filePath) {
+  log("解析を開始：$filePath");
+  const int inputSize = 448;
+  
+  // --- 前処理 (あなたの正常に動作するコード) ---
+  final imageFile = File(filePath);
+  final imageBytes = imageFile.readAsBytesSync();
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) throw Exception('Failed to decode');
+  
+  // copyResizeCropSquareってこれが原因では？
+  final resizedImage = img.copyResizeCropSquare(image, size: inputSize);
+  final mean = [0.485, 0.456, 0.406];
+  final std = [0.229, 0.224, 0.225];
+  final inputTensor = List.generate(1, (_) => List.generate(inputSize, (_) => List.generate(3, (_) => List.generate(inputSize, (_) => 0.0))));
+  for (int y = 0; y < inputSize; y++) {
+    for (int x = 0; x < inputSize; x++) {
+      final pixel = resizedImage.getPixel(x, y);
+      */
+
+      /*
+       * 同じくダメ。
+        [log] 解析を開始：/storage/emulated/0/Pictures/pixiv/illust_125330520_20250711_181152.jpg
+        [log] 現在はrgrで処理
+        [log] 解析完了：general, 1girl, solo, simple background, monochrome, comic, greyscale, no humans, black background, dark
+      */
+      // inputTensor[0][y][0][x] = ((pixel.r / 255.0) - mean[0]) / std[0];
+      // inputTensor[0][y][1][x] = ((pixel.g / 255.0) - mean[1]) / std[1];
+      // inputTensor[0][y][2][x] = ((pixel.b / 255.0) - mean[2]) / std[2];
+      
+      /* ダメそう。時々1girlが出てくるけど基本これ。black backgroundは初めて見たかも？
+        [log] 解析を開始：/storage/emulated/0/Pictures/pixiv/illust_125923984_20250812_012848.png
+        [log] 現在はbgrで処理
+        [log] 解析完了：general, simple background, monochrome, comic, greyscale, no humans, black background, dark
+      */
+      // inputTensor[0][y][0][x] = ((pixel.b / 255.0) - mean[0]) / std[0];
+      // inputTensor[0][y][1][x] = ((pixel.g / 255.0) - mean[1]) / std[1];
+      // inputTensor[0][y][2][x] = ((pixel.r / 255.0) - mean[2]) / std[2];
+
+      // inputTensor[0][y][0][x] = pixel.r / 255.0;
+      // inputTensor[0][y][1][x] = pixel.g / 255.0;
+      // inputTensor[0][y][2][x] = pixel.b / 255.0;
+      /*
+    }
+  }
+  log("現在はrgrで処理");
+
+  // --- 推論 (変更なし) ---
+  var output = List.filled(1 * labels.length, 0.0).reshape([1, labels.length]);
+  // var output = List.filled(1 * labels.length, 0.0).reshape([1, inputSize, inputSize, 3]);
+  interpreter.run(inputTensor, output);
+
+  // --- 結果解析 (変更なし) ---
+  const double confidenceThreshold = 0.20;
+  List<String> recognizedTags = [];
+  for (var i = 0; i < labels.length; i++) {
+    if (output[0][i] > confidenceThreshold) {
+      recognizedTags.add(labels[i].replaceAll('_', ' '));
+    }
+  }
+  
+  // ★★★ ここからデバッグ用画像の返却ロジックを追加 ★★★
+  final pngBytes = img.encodePng(resizedImage);
+  final base64Image = base64Encode(pngBytes);
+
+  log("解析完了：${recognizedTags.join(', ')}");
+  return {
+    'tags': recognizedTags.isEmpty ? ['タグが見つかりませんでした'] : recognizedTags,
+    'image': base64Image,
+  };
+}
+*/
+
+
+/*
+chatgpt
+Map<String, dynamic> _analyze(Interpreter interpreter, List<String> labels, String filePath) {
+  log("解析を開始：$filePath");
+  const int inputSize = 448;
+  final mean = [0.485, 0.456, 0.406];
+  final std = [0.229, 0.224, 0.225];
+
+  // 1) 画像読み込み＆リサイズ（syncでOK）
+  final imageFile = File(filePath);
+  final imageBytes = imageFile.readAsBytesSync();
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) throw Exception('Failed to decode image: $filePath');
+
+  final resizedImage = img.copyResizeCropSquare(image, size: inputSize);
+
+  // 2) モデルの期待する入力 shape を確認
+  List<int>? inputShape;
+  try {
+    inputShape = interpreter.getInputTensor(0).shape;
+  } catch (e) {
+    log("警告: interpreter.getInputTensor が使えませんでした: $e");
+    // 取得できない場合は NHWC を仮定（TensorFlow系はほとんどNHWC）
+    inputShape = [1, inputSize, inputSize, 3];
+  }
+  log("モデルの入力 shape: $inputShape");
+
+  // 判定：NHWC か NCHW か（最後 or second が 3 かどうか）
+  final bool isNHWC = (inputShape.length == 4 && inputShape[3] == 3) || (inputShape.length == 4 && inputShape.last == 3);
+  final bool isNCHW = (inputShape.length == 4 && inputShape[1] == 3);
+
+  if (!isNHWC && !isNCHW) {
+    log("注意: 入力のチャネル位置が不明です。inputShape=$inputShape 。NHWC を仮定して続行します。");
+  }
+  log("推定: isNHWC=$isNHWC, isNCHW=$isNCHW");
+
+  // 3) 前処理：NHWC/NCHW に合わせてテンソル作成
+  dynamic inputTensor;
+  if (isNHWC || (!isNHWC && !isNCHW)) {
+    // NHWC: [1, H, W, 3]
+    inputTensor = List.generate(1, (_) =>
+        List.generate(inputSize, (y) =>
+            List.generate(inputSize, (x) => List.filled(3, 0.0))));
+    for (int y = 0; y < inputSize; y++) {
+      for (int x = 0; x < inputSize; x++) {
+        final p = resizedImage.getPixel(x, y);
+        final r = (p.r / 255.0 - mean[0]) / std[0];
+        final g = (p.g / 255.0 - mean[1]) / std[1];
+        final b = (p.b / 255.0 - mean[2]) / std[2];
+        inputTensor[0][y][x][0] = r;
+        inputTensor[0][y][x][1] = g;
+        inputTensor[0][y][x][2] = b;
+      }
+    }
+  } else {
+    // NCHW: [1, 3, H, W]
+    inputTensor = List.generate(1, (_) =>
+        List.generate(3, (_) =>
+            List.generate(inputSize, (_) => List.filled(inputSize, 0.0))));
+    for (int y = 0; y < inputSize; y++) {
+      for (int x = 0; x < inputSize; x++) {
+        final p = resizedImage.getPixel(x, y);
+        final r = (p.r / 255.0 - mean[0]) / std[0];
+        final g = (p.g / 255.0 - mean[1]) / std[1];
+        final b = (p.b / 255.0 - mean[2]) / std[2];
+        inputTensor[0][0][y][x] = r;
+        inputTensor[0][1][y][x] = g;
+        inputTensor[0][2][y][x] = b;
+      }
+    }
+  }
+
+  // 4) 推論用の出力バッファ作成（[1, num_labels]）
+  final output = List.generate(1, (_) => List.filled(labels.length, 0.0));
+
+  // 5) 推論 実行
+  interpreter.run(inputTensor, output);
+
+  // 6) 出力のチェック: min/max を見て、もし [-inf..+inf] 的に広ければ sigmoid が必要か判断
+  double minOut = double.infinity;
+  double maxOut = -double.infinity;
+  for (final v in output[0]) {
+    final d = v.toDouble();
+    if (d < minOut) minOut = d;
+    if (d > maxOut) maxOut = d;
+  }
+  log("出力レンジ: min=$minOut, max=$maxOut");
+
+  // sigmoid のヘルパー
+  double sigmoid(double x) => 1.0 / (1.0 + math.exp(-x));
+
+  // もし出力が確率(0..1)でないなら sigmoid をかける
+  List<double> probs = output[0].map((v) => v.toDouble()).toList();
+  if (minOut < -0.001 || maxOut > 1.001) {
+    // logits っぽい -> sigmoid
+    probs = probs.map((v) => sigmoid(v)).toList();
+    log("出力に sigmoid を適用しました（モデルは logits を出力している可能性があります）");
+  }
+
+  // 7) 閾値でタグ抽出（かつ上位ソートして見やすく）
+  const double confidenceThreshold = 0.35;
+  final indices = List<int>.generate(labels.length, (i) => i);
+  indices.sort((a, b) => probs[b].compareTo(probs[a])); // 降順
+
+  final recognizedTags = <String>[];
+  for (final i in indices) {
+    if (probs[i] >= confidenceThreshold) {
+      recognizedTags.add('${labels[i].replaceAll('_', ' ')} (${(probs[i] * 100).toStringAsFixed(1)}%)');
+    }
+  }
+
+  // もし閾値で1つも無ければ上位10個だけ表示する（デバッグ用）
+  if (recognizedTags.isEmpty) {
+    for (int k = 0; k < 10 && k < labels.length; k++) {
+      final i = indices[k];
+      recognizedTags.add('${labels[i].replaceAll('_', ' ')} (${(probs[i] * 100).toStringAsFixed(1)}%)');
+    }
+    log("閾値でタグが見つかりませんでした。出力上位10件を返します（デバッグ）");
+  }
+
+  // 8) デバッグ用にリサイズ画像を base64 で返す（画面で確認したいときに便利）
+  final pngBytes = img.encodePng(resizedImage);
+  final base64Image = base64Encode(pngBytes);
+
+  log("解析完了：${recognizedTags.join(', ')}");
+
+  return {
+    'tags': recognizedTags,
+    'image': base64Image,
+    'input_shape': inputShape,
+    'output_range': {'min': minOut, 'max': maxOut},
+  };
+}
+*/
+
+// ★★★ 返り値の型を、タグと画像のセットを返せるようにMapに変更 ★★★
+/*
+Map<String, dynamic> _analyze(Interpreter interpreter, List<String> labels, String filePath) {
+  log("解析を開始：$filePath");
+  const int inputSize = 448;
+  
+  // --- 前処理 (あなたの正常に動作するコード) ---
+  final imageFile = File(filePath);
+  final imageBytes = imageFile.readAsBytesSync();
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) throw Exception('Failed to decode');
+  
+  final resizedImage = img.copyResizeCropSquare(image, size: inputSize);
+  final mean = [0.485, 0.456, 0.406];
+  final std = [0.229, 0.224, 0.225];
+  final inputTensor = List.generate(1, (_) => List.generate(inputSize, (_) => List.generate(3, (_) => List.generate(inputSize, (_) => 0.0))));
+  for (int y = 0; y < inputSize; y++) {
+    for (int x = 0; x < inputSize; x++) {
+      final pixel = resizedImage.getPixel(x, y);
+      inputTensor[0][y][0][x] = ((pixel.r / 255.0) - mean[0]) / std[0];
+      inputTensor[0][y][1][x] = ((pixel.g / 255.0) - mean[1]) / std[1];
+      inputTensor[0][y][2][x] = ((pixel.b / 255.0) - mean[2]) / std[2];
+      // inputTensor[0][y][0][x] = pixel.r / 255.0;
+      // inputTensor[0][y][1][x] = pixel.g / 255.0;
+      // inputTensor[0][y][2][x] = pixel.b / 255.0;
+    }
+  }
+
+  // --- 推論 (変更なし) ---
+  var output = List.filled(1 * labels.length, 0.0).reshape([1, labels.length]);
+  interpreter.run(inputTensor, output);
+
+  // --- 結果解析 (変更なし) ---
+  const double confidenceThreshold = 0.35;
+  List<String> recognizedTags = [];
+  for (var i = 0; i < labels.length; i++) {
+    if (output[0][i] > confidenceThreshold) {
+      recognizedTags.add(labels[i].replaceAll('_', ' '));
+    }
+  }
+  
+  // ★★★ ここからデバッグ用画像の返却ロジックを追加 ★★★
+  final pngBytes = img.encodePng(resizedImage);
+  final base64Image = base64Encode(pngBytes);
+
+  log("解析完了：${recognizedTags.join(', ')}");
+  return {
+    'tags': recognizedTags.isEmpty ? ['タグが見つかりませんでした'] : recognizedTags,
+    'image': base64Image,
+  };
+}
+*/
+
+/*
+Map<String, dynamic> _analyze(Interpreter interpreter, List<String> labels, String filePath) {
+  const int inputSize = 448;
+  
+  // --- 前処理 ---
+  final imageFile = File(filePath);
+  final imageBytes = imageFile.readAsBytesSync();
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) throw Exception('Failed to decode');
+  
+  final resizedImage = img.copyResizeCropSquare(image, size: inputSize);
+  
+  // ★★★ データ構造を[1, 448, 448, 3] (Channels-Last)に戻す ★★★
+  final inputFloats = Float32List(1 * inputSize * inputSize * 3);
+  int pixelIndex = 0; // ★★★ 正しい変数名
+  final mean = [0.485, 0.456, 0.406];
+  final std = [0.229, 0.224, 0.225];
+
+  for (int y = 0; y < inputSize; y++) {
+    for (int x = 0; x < inputSize; x++) {
+      final pixel = resizedImage.getPixel(x, y);
+      // ★★★ 正しい変数名を使い、RGBの順番で代入 ★★★
+      inputFloats[pixelIndex++] = ((pixel.r / 255.0) - mean[0]) / std[0]; // R
+      inputFloats[pixelIndex++] = ((pixel.g / 255.0) - mean[1]) / std[1]; // G
+      inputFloats[pixelIndex++] = ((pixel.b / 255.0) - mean[2]) / std[2]; // B
+    }
+  }
+  
+  // ★★★ 形状も[1, 448, 448, 3]に戻す ★★★
+  final inputTensor = inputFloats.reshape([1, inputSize, inputSize, 3]);
+  
+  // --- 推論 ---
+  var output = List.filled(1 * labels.length, 0.0).reshape([1, labels.length]);
+  interpreter.run(inputTensor, output);
+
+  // --- 結果解析 (変更なし) ---
+  const double confidenceThreshold = 0.35;
+  List<String> recognizedTags = [];
+  for (var i = 0; i < labels.length; i++) {
+    if (output[0][i] > confidenceThreshold) {
+      recognizedTags.add(labels[i].replaceAll('_', ' '));
+    }
+  }
+  
+  // --- デバッグ用画像の返却 (変更なし) ---
+  final pngBytes = img.encodePng(resizedImage);
+  final base64Image = base64Encode(pngBytes);
+
+  return {
+    'tags': recognizedTags.isEmpty ? ['タグが見つかりませんでした'] : recognizedTags,
+    'image': base64Image,
+  };
+}
+*/
+
+// --- メインスレッドで実行されるコード ---
+
+class AiService {
+  final AiModelDefinition modelDefinition;
+
+
+  /*
+  static final AiService _instance = AiService._internal();
+  factory AiService() => _instance;
+  */
+
+  Isolate? _isolate;
+  SendPort? _isolateSendPort;
+  ReceivePort? _mainReceivePort;
+  final Completer<void> _isolateReadyCompleter = Completer<void>();
+
+  AiService({required this.modelDefinition}) {
+    _initIsolate();
+  }
+
+  Future<void> _initIsolate() async {
+    _mainReceivePort = ReceivePort();
+    final token = RootIsolateToken.instance;
+    if (token == null) {
+      log('Could not get RootIsolateToken');
+      return;
+    }
+
+    _isolate = await Isolate.spawn(
+      _aiIsolateEntry, 
+      IsolateInitMessage(
+        _mainReceivePort!.sendPort,
+        token,
+        modelDefinition.modelFileName,
+        modelDefinition.labelFileName
+        , modelDefinition.inputType
+    ));
+
+    _mainReceivePort!.listen((message) {
+      if (message is SendPort) {
+        _isolateSendPort = message;
+      } else if (message == 'ready') {
+        // Isolateからの準備完了通知
+        _isolateReadyCompleter.complete();
+        log('AI Service: Isolate connection established and model loaded.');
+      }
+    });
+  }
+
+  // ★★★ 解析結果を格納するカスタムクラス ★★★
+  Future<Map<String, dynamic>> analyzeImage(File imageFile) async {
+    await _isolateReadyCompleter.future;
+    if (_isolateSendPort == null) return {'error': 'AIサービス未準備'};
+
+    final completer = Completer<Map<String, dynamic>>();
+    final tempReceivePort = ReceivePort();
+
+    tempReceivePort.listen((message) {
+      if (message is Map<String, dynamic>) {
+        completer.complete(message);
+      }
+      tempReceivePort.close();
+    });
+
+    _isolateSendPort!.send(
+      IsolateAnalyzeRequest(imageFile.path, "", tempReceivePort.sendPort),
+    );
+
+    return completer.future;
+  }
+
+  void dispose() {
+    _isolateSendPort?.send('close');
+    _mainReceivePort?.close();
+    _isolate?.kill(priority: Isolate.immediate);
+    _isolate = null;
+    log('AI Service: Disposed.');
+  }
+}
