@@ -318,7 +318,6 @@ class _DetailScreenState extends State<DetailScreen>
           : null,
       // AppBarの高さを考慮するために必要
       extendBodyBehindAppBar: true,
-      backgroundColor: Colors.white,
       // ★★★ 画面全体をGestureDetectorで囲んでタップを検知
       body: GestureDetector(
         onTap: _toggleUiVisibility,
