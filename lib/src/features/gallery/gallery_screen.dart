@@ -260,12 +260,14 @@ class _MyHomePageState extends State<MyHomePage> {
                       if (item is AssetEntity) {
                         // ★★★ 幅だけを指定（高さはnull）
                         thumbnailWidget = AssetThumbnail(
+                          key: ValueKey(item.id),
                           asset: item,
                           width: thumbnailSize,
                         );
                       } else if (item is File) {
                         // ★★★ 幅だけを指定（高さはnull）
                         thumbnailWidget = FileThumbnail(
+                          key: ValueKey(item.path),
                           imageFile: item,
                           width: thumbnailSize,
                         );

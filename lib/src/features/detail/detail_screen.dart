@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:async';
 
+import 'package:vector_math/vector_math_64.dart' show Vector3;
+
 import '../../core/services/database_helper.dart';
 
 import 'package:flutter/material.dart';
@@ -258,9 +260,9 @@ class _DetailScreenState extends State<DetailScreen>
       endMatrix = Matrix4.identity();
     } else {
       // 拡大されていない場合は、タップした位置を中心に2.5倍に拡大
-      endMatrix = Matrix4.identity();
-      endMatrix.translateByDouble(-position.dx * 1.5, -position.dy * 1.5, 0.0, 0.0);
-      endMatrix.scaleByDouble(2.5, 2.5, 2.5, 1);
+      endMatrix = Matrix4.identity()
+        ..translateByVector3(Vector3(-position.dx * 1.5, -position.dy * 1.5, 0.0))
+        ..scaleByVector3(Vector3(2.5, 2.5, 1.0));
     }
 
     // アニメーションを開始
