@@ -1,4 +1,4 @@
-import 'main.dart';
+import '../gallery/gallery_screen.dart';
 
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -14,9 +14,9 @@ class _PermissionScreenState extends State<PermissionScreen> {
   // 権限を要求し、許可されたらメイン画面に遷移する関数
   Future<void> _requestAndProceed() async {
     final ps = await PhotoManager.requestPermissionExtend();
+    if (!mounted) return;
     if (ps.isAuth || ps.hasAccess) {
       // 権限が許可されたら、この画面を破棄してメイン画面に遷移
-      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => const MyHomePage(title: "Moe Viewer Home Page"),

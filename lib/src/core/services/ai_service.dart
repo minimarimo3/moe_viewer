@@ -4,7 +4,7 @@ import 'dart:developer';
 import 'dart:io';
 import 'dart:isolate';
 
-import '../service/ai_model_definitions.dart';
+import '../models/ai_model_definition.dart';
 
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;

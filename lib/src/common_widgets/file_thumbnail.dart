@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'thumbnail_pool.dart';
-import 'service/thumbnail_service.dart';
+import '../core/services/thumbnail_pool.dart';
+import '../core/services/thumbnail_service.dart';
 
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';

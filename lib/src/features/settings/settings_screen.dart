@@ -6,10 +6,11 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import 'settings_provider.dart';
-import '../utils/dialogs.dart';
-import '../service/ai_service.dart';
-import '../service/ai_model_definitions.dart';
+import '../../core/providers/settings_provider.dart';
+import '../../common_widgets/dialogs.dart';
+import '../../core/services/ai_service.dart';
+import '../../core/models/ai_model_definition.dart';
+import '../../core/models/folder_setting.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});

@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 
-import '../service/database_helper.dart';
+import '../../core/services/database_helper.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -38,7 +38,7 @@ class _DetailScreenState extends State<DetailScreen>
   // ★★★ PageViewのスワイプを有効/無効にするための変数 ★★★
   bool _isPagingEnabled = true;
 
-  Future<void> _showImageDetails(BuildContext context, File imageFile) async {
+  Future<void> _showImageDetails(File imageFile) async {
     // 画像のバイトデータを読み込み
     /*
     final bytes = await imageFile.readAsBytes();
@@ -56,6 +56,8 @@ class _DetailScreenState extends State<DetailScreen>
     final tags = await DatabaseHelper.instance.getTagsForPath(imageFile.path);
     // Pixiv IDを取得
     final pixivId = _extractPixivId(imageFile.path);
+
+    if (!mounted) return;
 
     // 画面下からスライドアップするパネル（ModalBottomSheet）を表示
     showModalBottomSheet(
@@ -256,9 +258,9 @@ class _DetailScreenState extends State<DetailScreen>
       endMatrix = Matrix4.identity();
     } else {
       // 拡大されていない場合は、タップした位置を中心に2.5倍に拡大
-      endMatrix = Matrix4.identity()
-        ..translate(-position.dx * 1.5, -position.dy * 1.5)
-        ..scale(2.5);
+      endMatrix = Matrix4.identity();
+      endMatrix.translate(-position.dx * 1.5, -position.dy * 1.5, 0.0);
+      endMatrix.scale(2.5, 2.5);
     }
 
     // アニメーションを開始
@@ -310,7 +312,7 @@ class _DetailScreenState extends State<DetailScreen>
                   icon: const Icon(Icons.info_outline),
                   onPressed: () {
                     final currentImage = widget.imageFileList[_currentIndex];
-                    _showImageDetails(context, currentImage);
+                    _showImageDetails(currentImage);
                   },
                 ),
               ],

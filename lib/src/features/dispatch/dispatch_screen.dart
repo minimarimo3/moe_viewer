@@ -1,6 +1,6 @@
-import 'main.dart';
-import 'permission_screen.dart';
-import 'settings_provider.dart';
+import '../gallery/gallery_screen.dart';
+import '../permission/permission_screen.dart';
+import '../../core/providers/settings_provider.dart';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
