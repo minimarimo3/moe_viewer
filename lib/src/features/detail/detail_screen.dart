@@ -259,8 +259,8 @@ class _DetailScreenState extends State<DetailScreen>
     } else {
       // 拡大されていない場合は、タップした位置を中心に2.5倍に拡大
       endMatrix = Matrix4.identity();
-      endMatrix.translate(-position.dx * 1.5, -position.dy * 1.5, 0.0);
-      endMatrix.scale(2.5, 2.5);
+      endMatrix.translateByDouble(-position.dx * 1.5, -position.dy * 1.5, 0.0, 0.0);
+      endMatrix.scaleByDouble(2.5, 2.5, 2.5, 1);
     }
 
     // アニメーションを開始
