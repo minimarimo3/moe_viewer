@@ -26,10 +26,9 @@ class GalleryGridWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final thumbnailSize = (screenWidth /
-            crossAxisCount *
-            MediaQuery.of(context).devicePixelRatio)
-        .round();
+    final thumbnailSize =
+        (screenWidth / crossAxisCount * MediaQuery.of(context).devicePixelRatio)
+            .round();
 
     return GridView.builder(
       controller: autoScrollController,

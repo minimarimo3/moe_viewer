@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 class GalleryShuffleUtils {
-  static Future<bool?> showShuffleConfirmationDialog(BuildContext context) async {
+  static Future<bool?> showShuffleConfirmationDialog(
+    BuildContext context,
+  ) async {
     return await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -32,7 +34,9 @@ class GalleryShuffleUtils {
     final indexList = List.generate(originalDisplayItems.length, (i) => i);
     indexList.shuffle();
 
-    final shuffledDisplayItems = indexList.map((i) => originalDisplayItems[i]).toList();
+    final shuffledDisplayItems = indexList
+        .map((i) => originalDisplayItems[i])
+        .toList();
     final shuffledDetailFiles = indexList
         .map((i) => originalDetailFiles[i])
         .cast<File>()
@@ -49,8 +53,5 @@ class ShuffleResult {
   final List<dynamic> displayItems;
   final List<File> detailFiles;
 
-  ShuffleResult({
-    required this.displayItems,
-    required this.detailFiles,
-  });
+  ShuffleResult({required this.displayItems, required this.detailFiles});
 }

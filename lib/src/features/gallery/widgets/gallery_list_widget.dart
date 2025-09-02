@@ -56,10 +56,7 @@ class GalleryListWidget extends StatelessWidget {
               ),
             );
           } else {
-            return Container(
-              height: 300,
-              color: Colors.grey[300],
-            );
+            return Container(height: 300, color: Colors.grey[300]);
           }
         },
       );
@@ -92,10 +89,7 @@ class GalleryListWidget extends StatelessWidget {
             onLongPress(item, details.globalPosition);
           },
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              vertical: 4.0,
-              horizontal: 8.0,
-            ),
+            padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
             child: Hero(
               tag: 'imageHero_$index',
               child: buildFullAspectRatioImage(item),

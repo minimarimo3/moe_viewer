@@ -75,8 +75,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       }
 
       // findAncestorStateOfTypeも試してみる
-      final pieMenuWidget =
-          context.findAncestorStateOfType<GalleryPieMenuWidgetState>();
+      final pieMenuWidget = context
+          .findAncestorStateOfType<GalleryPieMenuWidgetState>();
       log('Found pie menu widget: ${pieMenuWidget != null}');
       if (pieMenuWidget != null) {
         log('Calling openMenuForItem...');
@@ -127,7 +127,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         if (_autoScrollController.hasClients) {
           final screenWidth = MediaQuery.of(context).size.width;
           final itemSize = screenWidth / settings.gridCrossAxisCount;
-          index = (_autoScrollController.offset / itemSize).floor() *
+          index =
+              (_autoScrollController.offset / itemSize).floor() *
               settings.gridCrossAxisCount;
         }
       } else {
@@ -157,8 +158,9 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     setState(() {
       _displayItems = imageList.displayItems;
       _imageFilesForDetail = imageList.detailFiles;
-      _status =
-          _displayItems.isEmpty ? LoadingStatus.empty : LoadingStatus.completed;
+      _status = _displayItems.isEmpty
+          ? LoadingStatus.empty
+          : LoadingStatus.completed;
     });
 
     log('合計 ${imageList.displayItems.length} 個のアイテムが見つかりました（詳細画面用リストも準備完了）。');
@@ -211,21 +213,26 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                   onNotification: (notification) {
                     // ★★★ スクロール開始時と終了時は無視し、スクロール中のみ処理 ★★★
                     if (notification is ScrollUpdateNotification) {
-                      final scrollDelta = notification.metrics.pixels - _lastScrollOffset;
-                      const scrollThreshold = 10.0; // しきい値
+                      final scrollDelta =
+                          notification.metrics.pixels - _lastScrollOffset;
+                      const scrollThreshold = 15.0; // しきい値
 
                       if (scrollDelta.abs() > scrollThreshold) {
                         if (scrollDelta > 0 && _isAppBarVisible) {
                           // 下にスクロール
                           _appBarAnimationController.reverse();
                           // ★★★ ステータスバーなどを非表示（没入モード） ★★★
-                          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+                          SystemChrome.setEnabledSystemUIMode(
+                            SystemUiMode.immersiveSticky,
+                          );
                           _isAppBarVisible = false;
                         } else if (scrollDelta < 0 && !_isAppBarVisible) {
                           // 上にスクロール
                           _appBarAnimationController.forward();
-                           // ★★★ ステータスバーなどを表示 ★★★
-                          SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+                          // ★★★ ステータスバーなどを表示 ★★★
+                          SystemChrome.setEnabledSystemUIMode(
+                            SystemUiMode.edgeToEdge,
+                          );
                           _isAppBarVisible = true;
                         }
                       }
@@ -301,7 +308,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                   await Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (context) => const SettingsScreen()),
+                      builder: (context) => const SettingsScreen(),
+                    ),
                   );
                   _loadImages();
                 },
@@ -321,8 +329,9 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   }
 
   Future<void> _showShuffleConfirmationDialog() async {
-    final confirm =
-        await GalleryShuffleUtils.showShuffleConfirmationDialog(context);
+    final confirm = await GalleryShuffleUtils.showShuffleConfirmationDialog(
+      context,
+    );
 
     if (confirm == true) {
       _shuffleImages();
@@ -354,8 +363,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       _itemScrollController.jumpTo(index: 0);
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('表示順をシャッフルしました。')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('表示順をシャッフルしました。')));
   }
 }

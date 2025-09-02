@@ -41,8 +41,9 @@ class _DetailScreenState extends State<DetailScreen>
 
   // ★★★ PageViewのスワイプを有効/無効にするための変数 ★★★
   bool _isPagingEnabled = true;
-  
-  final GlobalKey<DetailPieMenuWidgetState> _pieMenuKey = GlobalKey<DetailPieMenuWidgetState>();
+
+  final GlobalKey<DetailPieMenuWidgetState> _pieMenuKey =
+      GlobalKey<DetailPieMenuWidgetState>();
 
   void _handleLongPress(Offset globalPosition) {
     final pieMenuState = _pieMenuKey.currentState;
@@ -305,7 +306,7 @@ class _DetailScreenState extends State<DetailScreen>
   @override
   Widget build(BuildContext context) {
     final currentFile = widget.imageFileList[_currentIndex];
-    
+
     return DetailPieMenuWidget(
       key: _pieMenuKey,
       currentFile: currentFile,
@@ -321,7 +322,8 @@ class _DetailScreenState extends State<DetailScreen>
                       final currentImage = widget.imageFileList[_currentIndex];
                       // TODO: 課金で削除？
                       String shareText = "これはmoe_viewerで共有されました。\n";
-                      if (PixivUtils.extractPixivId(currentImage.path) != null) {
+                      if (PixivUtils.extractPixivId(currentImage.path) !=
+                          null) {
                         shareText +=
                             "イラストのPixivのリンク: https://www.pixiv.net/artworks/${PixivUtils.extractPixivId(currentImage.path)}";
                       }

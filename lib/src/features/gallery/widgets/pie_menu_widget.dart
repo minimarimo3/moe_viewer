@@ -37,8 +37,10 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
   }
 
   void openMenuForItem(dynamic item, [Offset? globalPosition]) async {
-    print('--- openMenuForItem called with item: $item at position: $globalPosition ---');
-    
+    print(
+      '--- openMenuForItem called with item: $item at position: $globalPosition ---',
+    );
+
     // パスとPixivIDを解決
     String path = "";
     if (item is File) {
@@ -58,9 +60,9 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
 
     final id = PixivUtils.extractPixivId(path);
     if (!mounted) return;
-    
+
     print('Resolved path: $path, pixivId: $id');
-    
+
     setState(() {
       _currentTargetPath = path;
       _currentPixivId = id;
@@ -112,9 +114,7 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
                   onSelect: () async {
                     final id = _currentPixivId;
                     if (id == null) return;
-                    final uri = Uri.parse(
-                      'https://www.pixiv.net/artworks/$id',
-                    );
+                    final uri = Uri.parse('https://www.pixiv.net/artworks/$id');
                     if (await canLaunchUrl(uri)) {
                       await launchUrl(uri);
                     } else if (mounted) {
@@ -135,9 +135,7 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(
-                        newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました',
-                      ),
+                      content: Text(newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました'),
                     ),
                   );
                 },

@@ -25,12 +25,14 @@ class DetailPieMenuWidgetState extends State<DetailPieMenuWidget> {
   final GlobalKey _canvasKey = GlobalKey();
 
   void openMenuAtPosition([Offset? globalPosition]) {
-    log('--- detail openMenuAtPosition called at position: $globalPosition ---');
-    
+    log(
+      '--- detail openMenuAtPosition called at position: $globalPosition ---',
+    );
+
     // すぐにメニューを開く（WidgetsBinding.instance.addPostFrameCallbackを使わない）
     if (!mounted) return;
     log('Opening pie menu immediately...');
-    
+
     if (globalPosition != null && _canvasKey.currentContext != null) {
       final box = _canvasKey.currentContext!.findRenderObject() as RenderBox?;
       if (box != null) {
@@ -69,15 +71,13 @@ class DetailPieMenuWidgetState extends State<DetailPieMenuWidget> {
           onSelect: () async {
             final id = PixivUtils.extractPixivId(widget.currentFile.path);
             if (id != null) {
-              final uri = Uri.parse(
-                'https://www.pixiv.net/artworks/$id',
-              );
+              final uri = Uri.parse('https://www.pixiv.net/artworks/$id');
               if (await canLaunchUrl(uri)) {
                 await launchUrl(uri);
               } else if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('リンクを開けませんでした')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('リンクを開けませんでした')));
               }
             }
           },
@@ -86,15 +86,12 @@ class DetailPieMenuWidgetState extends State<DetailPieMenuWidget> {
       PieAction(
         tooltip: const Text('お気に入りを切替'),
         onSelect: () async {
-          final newState = await FavoritesService.instance
-              .toggleFavorite(widget.currentFile.path);
+          final newState = await FavoritesService.instance.toggleFavorite(
+            widget.currentFile.path,
+          );
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました',
-              ),
-            ),
+            SnackBar(content: Text(newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました')),
           );
         },
         child: const Icon(Icons.favorite_border),
