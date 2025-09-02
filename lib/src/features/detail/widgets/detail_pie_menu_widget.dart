@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:pie_menu/pie_menu.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -24,22 +25,22 @@ class DetailPieMenuWidgetState extends State<DetailPieMenuWidget> {
   final GlobalKey _canvasKey = GlobalKey();
 
   void openMenuAtPosition([Offset? globalPosition]) {
-    print('--- detail openMenuAtPosition called at position: $globalPosition ---');
+    log('--- detail openMenuAtPosition called at position: $globalPosition ---');
     
     // すぐにメニューを開く（WidgetsBinding.instance.addPostFrameCallbackを使わない）
     if (!mounted) return;
-    print('Opening pie menu immediately...');
+    log('Opening pie menu immediately...');
     
     if (globalPosition != null && _canvasKey.currentContext != null) {
       final box = _canvasKey.currentContext!.findRenderObject() as RenderBox?;
       if (box != null) {
         final localPosition = box.globalToLocal(globalPosition);
-        print('Opening at local position: $localPosition');
+        log('Opening at local position: $localPosition');
         _pieController.openMenu(menuDisplacement: localPosition);
         return;
       }
     }
-    print('Opening at center');
+    log('Opening at center');
     _pieController.openMenu();
   }
 
