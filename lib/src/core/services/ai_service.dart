@@ -23,7 +23,6 @@ class IsolateAnalyzeRequest {
 
 void _aiIsolateEntry(IsolateInitMessage initMessage) async {
   // 常にメッセージングを初期化して ready を返す（モデルなしでもハングしないように）
-  log("この関数は次の関数から呼び出されました: ${StackTrace.current}");
   final mainSendPort = initMessage.sendPort;
   final token = initMessage.token;
   BackgroundIsolateBinaryMessenger.ensureInitialized(token);

@@ -4,23 +4,16 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:pie_menu/pie_menu.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:photo_manager/photo_manager.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
-import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 
-import '../detail/detail_screen.dart';
 import '../settings/settings_screen.dart';
-import '../../common_widgets/asset_thumbnail.dart';
-import '../../common_widgets/file_thumbnail.dart';
 import '../../core/providers/settings_provider.dart';
 import '../../core/repositories/image_repository.dart';
-import '../../core/services/favorites_service.dart';
-import '../../core/utils/pixiv_utils.dart';
+import 'widgets/pie_menu_widget.dart';
+import 'widgets/gallery_grid_widget.dart';
+import 'widgets/gallery_list_widget.dart';
+import 'utils/gallery_shuffle_utils.dart';
 
 enum LoadingStatus {
   loading, // 読み込み中
@@ -56,11 +49,33 @@ class _MyHomePageState extends State<MyHomePage> {
   Timer? _debounce;
 
   final bool _isAutoScrolling = false;
-  final PieMenuController _pieController = PieMenuController();
-  bool _isMenuOpen = false;
-  String? _currentTargetPath;
-  String? _currentPixivId;
-  final GlobalKey _canvasKey = GlobalKey();
+  final GlobalKey<GalleryPieMenuWidgetState> _pieMenuKey = GlobalKey<GalleryPieMenuWidgetState>();
+
+  void _handleLongPress(dynamic item, Offset globalPosition) {
+    // pie menu widget内でopenMenuForItemを呼び出すためのハンドラー
+    log('--- _handleLongPress called ---');
+    if (mounted) {
+      log('Long press detected on item: $item at position: $globalPosition');
+      
+      // GlobalKeyを使用して直接アクセス
+      final pieMenuState = _pieMenuKey.currentState;
+      if (pieMenuState != null) {
+        log('Using GlobalKey to call openMenuForItem...');
+        pieMenuState.openMenuForItem(item, globalPosition);
+        return;
+      }
+      
+      // findAncestorStateOfTypeも試してみる
+      final pieMenuWidget = context.findAncestorStateOfType<GalleryPieMenuWidgetState>();
+      log('Found pie menu widget: ${pieMenuWidget != null}');
+      if (pieMenuWidget != null) {
+        log('Calling openMenuForItem...');
+        pieMenuWidget.openMenuForItem(item, globalPosition);
+      } else {
+        log('ERROR: Could not find GalleryPieMenuWidgetState ancestor!');
+      }
+    }
+  }
 
   // initStateは、画面が作成されたときに一度だけ呼ばれる特別な場所です
   @override
@@ -151,134 +166,8 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  Future<void> _openMenuForItem(dynamic item, [Offset? globalPosition]) async {
-    /*
-    // 1) まず、現在のタップ位置でメニューを即時に開く（非同期待ちで座標がズレないようにする）
-    if (globalPosition != null && _canvasKey.currentContext != null) {
-      final box = _canvasKey.currentContext!.findRenderObject() as RenderBox?;
-      if (box != null) {
-        final localPosition = box.globalToLocal(globalPosition);
-        log('Global position: $globalPosition');
-        log('Local position: $localPosition');
-        _pieController.openMenu(menuDisplacement: localPosition);
-      } else {
-        _pieController.openMenu();
-      }
-    } else {
-      _pieController.openMenu();
-    }
-    */
-
-    // 2) メニューを開いた「後」で、対象パスとPixivIDを非同期に解決・反映する
-    // FIXME: よくないねぇ
-    String path = "";
-    if (item is File) {
-      path = item.path;
-    } else if (item is AssetEntity) {
-      // まずはファイル取得を行わずにタイトル（ファイル名）だけで判定して高速化
-      final title = await item.titleAsync; // 例: illust_12345678_p0.jpg
-      if (title.isNotEmpty) {
-        path = title; // PixivUtilsは末尾のファイル名を使うためこれでOK
-      } else {
-        // タイトルが取れない場合のみファイルを取得
-        final f = await item.originFile;
-        if (f == null) return; // 取得不可なら何もしない
-        path = f.path;
-      }
-    }
-
-    if (!mounted) return;
-    /*
-    if (path == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('この項目は操作できません')));
-      });
-      return;
-    }
-    */
-
-    final id = PixivUtils.extractPixivId(path);
-    if (!mounted) return;
-    setState(() {
-      _currentTargetPath = path;
-      _currentPixivId = id; // nullの可能性あり
-    });
-
-    // setState後のフレームで開く（内容反映のズレを防ぐ）
-    final capturedGlobal = globalPosition;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (capturedGlobal != null && _canvasKey.currentContext != null) {
-        final box = _canvasKey.currentContext!.findRenderObject() as RenderBox?;
-        if (box != null) {
-          final localPosition = box.globalToLocal(capturedGlobal);
-          log('Global position: $capturedGlobal');
-          log('Local position: $localPosition');
-          _pieController.openMenu(menuDisplacement: localPosition);
-          return;
-        }
-      }
-      _pieController.openMenu();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    // ★★★ Fileオブジェクトから画像のサイズを取得するための新しいヘルパー関数 ★★★
-    Future<Size> getImageSize(File imageFile) {
-      return _imageSizeFutureCache.putIfAbsent(imageFile.path, () async {
-        final bytes = await imageFile.readAsBytes();
-        final image = await decodeImageFromList(bytes);
-        return Size(image.width.toDouble(), image.height.toDouble());
-      });
-    }
-
-    // ★★★ 1列表示用の画像を構築するための新しいヘルパー関数 ★★★
-    Widget buildFullAspectRatioImage(dynamic item) {
-      if (item is AssetEntity) {
-        // AssetEntityはアスペクト比を直接持っている
-        final double aspectRatio = item.width / item.height;
-        return AspectRatio(
-          aspectRatio: aspectRatio,
-          // isOriginal: trueで高解像度版を要求
-          child: RepaintBoundary(
-            child: AssetEntityImage(item, isOriginal: true, fit: BoxFit.cover),
-          ),
-        );
-      } else if (item is File) {
-        // Fileはアスペクト比を知るために、中身を非同期で読み込む必要がある
-        return FutureBuilder<Size>(
-          // 画像のサイズを取得するFuture
-          future: getImageSize(item),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.done &&
-                snapshot.hasData &&
-                snapshot.data != null) {
-              // サイズが取得できたら、正しいアスペクト比で画像を表示
-              final size = snapshot.data!;
-              final double aspectRatio = size.width / size.height;
-              return AspectRatio(
-                aspectRatio: aspectRatio,
-                child: RepaintBoundary(
-                  child: Image.file(item, fit: BoxFit.cover),
-                ),
-              );
-            } else {
-              // 読み込み中は、仮の高さを持つプレースホルダーを表示
-              return Container(
-                height: 300, // 仮の高さ
-                color: Colors.grey[300],
-              );
-            }
-          },
-        );
-      } else {
-        return Container(color: Colors.red);
-      }
-    }
-
     Widget buildBody() {
       final crossAxisCount = Provider.of<SettingsProvider>(
         context,
@@ -295,122 +184,29 @@ class _MyHomePageState extends State<MyHomePage> {
         case LoadingStatus.completed:
           return Stack(
             children: [
-              // --- 背景のリスト表示 (GridViewまたはListView) ---
-              Builder(
-                builder: (context) {
-                  if (crossAxisCount == 1) {
-                    return ScrollablePositionedList.builder(
-                      itemScrollController: _itemScrollController,
-                      itemPositionsListener: _itemPositionsListener,
-                      itemCount: _displayItems.length,
-                      itemBuilder: (context, index) {
-                        final item = _displayItems[index];
-                        return GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => DetailScreen(
-                                  imageFileList: _imageFilesForDetail,
-                                  initialIndex: index,
-                                ),
-                              ),
-                            );
-                          },
-                          onLongPressStart: (details) {
-                            _openMenuForItem(item, details.globalPosition);
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 4.0,
-                              horizontal: 8.0,
-                            ),
-                            child: Hero(
-                              tag: 'imageHero_$index',
-                              child: buildFullAspectRatioImage(item),
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  }
-                  // 二列以上の場合
+              // メイン表示ウィジェット
+              if (crossAxisCount == 1)
+                GalleryListWidget(
+                  displayItems: _displayItems,
+                  imageFilesForDetail: _imageFilesForDetail,
+                  itemScrollController: _itemScrollController,
+                  itemPositionsListener: _itemPositionsListener,
+                  onLongPress: _handleLongPress,
+                  imageSizeFutureCache: _imageSizeFutureCache,
+                )
+              else
+                GalleryGridWidget(
+                  displayItems: _displayItems,
+                  imageFilesForDetail: _imageFilesForDetail,
+                  crossAxisCount: crossAxisCount,
+                  autoScrollController: _autoScrollController,
+                  onLongPress: _handleLongPress,
+                ),
 
-                  final screenWidth = MediaQuery.of(context).size.width;
-                  final thumbnailSize =
-                      (screenWidth /
-                              crossAxisCount *
-                              MediaQuery.of(context).devicePixelRatio)
-                          .round();
-
-                  return GridView.builder(
-                    controller: _autoScrollController,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      crossAxisSpacing: 2.0,
-                      mainAxisSpacing: 2.0,
-                    ),
-                    itemCount: _displayItems.length,
-                    itemBuilder: (BuildContext context, int index) {
-                      final item = _displayItems[index];
-
-                      Widget thumbnailWidget;
-                      if (item is AssetEntity) {
-                        // ★★★ 幅だけを指定（高さはnull）
-                        thumbnailWidget = RepaintBoundary(
-                          child: AssetThumbnail(
-                            key: ValueKey(item.id),
-                            asset: item,
-                            width: thumbnailSize,
-                          ),
-                        );
-                      } else if (item is File) {
-                        // ★★★ 幅だけを指定（高さはnull）
-                        thumbnailWidget = RepaintBoundary(
-                          child: FileThumbnail(
-                            key: ValueKey(item.path),
-                            imageFile: item,
-                            width: thumbnailSize,
-                          ),
-                        );
-                      } else {
-                        thumbnailWidget = Container(color: Colors.red);
-                      }
-
-                      return AutoScrollTag(
-                        key: ValueKey(index),
-                        controller: _autoScrollController,
-                        index: index,
-                        child: GestureDetector(
-                          onTap: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => DetailScreen(
-                                  imageFileList: _imageFilesForDetail,
-                                  initialIndex: index,
-                                ),
-                              ),
-                            );
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.setBool('wasOnDetailScreen', false);
-                          },
-                          onLongPressStart: (details) {
-                            _openMenuForItem(item, details.globalPosition);
-                          },
-                          child: thumbnailWidget,
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-
-              // --- 前面のローディング表示 ---
-              // ★★★ _isAutoScrollingがtrueの場合のみ表示 ★★★
+              // ローディング表示
               if (_isAutoScrolling)
                 Container(
-                  color: Colors.black.withAlpha((255 * 0.5).round()), // 半透明の背景
+                  color: Colors.black.withAlpha((255 * 0.5).round()),
                   child: const Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -418,7 +214,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         CircularProgressIndicator(color: Colors.white),
                         SizedBox(height: 16),
                         Text(
-                          '前回見ていた（大体の）位置へ移動中...', // ここに修正が入りました。
+                          '前回見ていた（大体の）位置へ移動中...',
                           style: TextStyle(color: Colors.white, fontSize: 16),
                         ),
                       ],
@@ -427,62 +223,6 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
             ],
           );
-
-        // 一列に２枚以上の写真がある
-
-        /*
-          return GridView.builder(
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              crossAxisSpacing: 2.0,
-              mainAxisSpacing: 2.0,
-            ),
-            itemCount: _displayItems.length,
-            itemBuilder: (BuildContext context, int index) {
-              final item = _displayItems[index];
-
-              // アイテムの型によって表示するウィジェットを切り替えます。
-              Widget thumbnailWidget;
-              if (item is AssetEntity) {
-                // AssetEntityの場合は、以前作った高速なAssetThumbnailを使います。
-                thumbnailWidget = AssetThumbnail(
-                  asset: item,
-                  width: thumbnailSize,
-                );
-              } else if (item is File) {
-                // Fileの場合は、自作のサムネイル機構を使います。
-                thumbnailWidget = FileThumbnail(
-                  imageFile: item,
-                  width: thumbnailSize,
-                );
-              } else {
-                // 予期せぬエラーの場合は赤いボックスを表示します。
-                thumbnailWidget = Container(color: Colors.red);
-              }
-
-              return GestureDetector(
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(                      builder: (context) => DetailScreen(
-                      imageFileList: _imageFilesForDetail,
-                      initialIndex: index,
-                    ),
-                  ),
-                  );
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setBool('wasOnDetailScreen', false);
-                },
-                // child: thumbnailWidget,
-                child: Hero(
-                  // タグには、画像ごとにユニークなもの（ファイルパスなど）を指定
-                  tag: 'imageHero_$index',
-                  child: thumbnailWidget,
-                ),
-              );
-            },
-          );
-          */
         case LoadingStatus.errorUnknown:
           return const Text('不明なエラーが発生しました。');
         case LoadingStatus.errorPermissionDenied:
@@ -492,7 +232,7 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     }
 
-    // 画面全体をPieCanvasで包み、単一PieMenuを配置
+    // 画面全体をGalleryPieMenuWidgetで包む
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pixiv Viewer'),
@@ -517,133 +257,36 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ],
       ),
-      body: PieCanvas(
-        key: _canvasKey,
-        theme: const PieTheme(
-          overlayColor: Colors.transparent,
-          buttonTheme: PieButtonTheme(
-            backgroundColor: Colors.white,
-            iconColor: Colors.black87,
-          ),
-          buttonThemeHovered: PieButtonTheme(
-            backgroundColor: Colors.blueAccent,
-            iconColor: Colors.white,
-          ),
-          regularPressShowsMenu: false,
-          longPressShowsMenu: false,
-          menuAlignment: Alignment.topLeft,
-        ),
-        onMenuToggle: (open) {
-          _isMenuOpen = open;
+      body: GalleryPieMenuWidget(
+        key: _pieMenuKey,
+        onMenuRequest: (item, globalPosition) {
+          // この処理はGalleryPieMenuWidget内で自動的に行われるため、空でOK
         },
-        child: Stack(
-          children: [
-            Center(
-              child: NotificationListener<ScrollNotification>(
-                onNotification: (notification) {
-                  if (_isMenuOpen) {
-                    _pieController.closeMenu();
-                  }
-                  return false; // 通知は親へ伝播させる
-                },
-                child: buildBody(),
-              ),
-            ),
-            // グローバルPieMenu（プログラム制御）
-            PieMenu(
-              controller: _pieController,
-              actions: [
-                if (_currentPixivId != null)
-                  PieAction(
-                    tooltip: const Text('Pixivを開く'),
-                    onSelect: () async {
-                      final id = _currentPixivId;
-                      if (id == null) return;
-                      final uri = Uri.parse(
-                        'https://www.pixiv.net/artworks/$id',
-                      );
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(uri);
-                      } else if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('リンクを開けませんでした')),
-                        );
-                      }
-                    },
-                    child: const Icon(Icons.open_in_new),
-                  ),
-                PieAction(
-                  tooltip: const Text('お気に入りを切替'),
-                  onSelect: () async {
-                    final path = _currentTargetPath;
-                    if (path == null) return;
-                    final newState = await FavoritesService.instance
-                        .toggleFavorite(path);
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました',
-                        ),
-                      ),
-                    );
-                  },
-                  child: const Icon(Icons.favorite_border),
-                ),
-              ],
-              child: const SizedBox.shrink(),
-            ),
-          ],
-        ),
+        child: Center(child: buildBody()),
       ),
     );
   }
 
   Future<void> _showShuffleConfirmationDialog() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('表示順のシャッフル'),
-        content: const Text('画像一覧の表示順をランダムにしますか？\n（現在のスクロール位置はリセットされます）'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('いいえ'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('はい'),
-          ),
-        ],
-      ),
-    );
+    final confirm = await GalleryShuffleUtils.showShuffleConfirmationDialog(context);
 
     if (confirm == true) {
       _shuffleImages();
     }
   }
-  // in lib/main.dart, _MyHomePageState class
 
   void _shuffleImages() {
-    // 1. 現在のリストの安全なコピーを作成
-    final originalDisplayItems = List.from(_displayItems);
-    final originalDetailFiles = List.from(_imageFilesForDetail);
+    // 新しいユーティリティを使用してシャッフル
+    final result = GalleryShuffleUtils.shuffleItems(
+      displayItems: _displayItems,
+      imageFilesForDetail: _imageFilesForDetail,
+    );
 
-    // 2. インデックスのリストを作成してシャッフル（あなたの正しいロジック）
-    final indexList = List.generate(originalDisplayItems.length, (i) => i);
-    indexList.shuffle();
-
-    // 3. Flutterに「今からUIを更新します」と伝える
+    // UIを更新
     setState(() {
-      // 4. setStateの「中」で、シャッフルされた新しいリストを代入する
-      _displayItems = indexList.map((i) => originalDisplayItems[i]).toList();
-      _imageFilesForDetail = indexList
-          .map((i) => originalDetailFiles[i])
-          .cast<File>()
-          .toList();
+      _displayItems = result.displayItems;
+      _imageFilesForDetail = result.detailFiles;
     });
-
-    // --- これ以降の処理はUI更新後なので、setStateの外でOK ---
 
     // しおりをリセット
     final settings = Provider.of<SettingsProvider>(context, listen: false);
@@ -657,8 +300,8 @@ class _MyHomePageState extends State<MyHomePage> {
       _itemScrollController.jumpTo(index: 0);
     }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('表示順をシャッフルしました。')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('表示順をシャッフルしました。')),
+    );
   }
 }
