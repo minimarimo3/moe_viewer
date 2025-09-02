@@ -38,13 +38,9 @@ class _FileThumbnailState extends State<FileThumbnail> {
   }
 
   Future<void> _loadOrGenerateThumbnail() async {
-        // 画面に表示される前にsetStateが呼ばれるのを防ぐ
+    // 画面に表示される前にsetStateが呼ばれるのを防ぐ
     if (!mounted) return;
-
-        // サムネイルを読み込む前に一度クリアして、古い画像が表示されるのを防ぐ
-    setState(() {
-      _thumbnailData = null;
-    });
+  // 以前はここで一旦nullにしていたが、ちらつきの原因になるのでやめる
     
     final tempDir = await getTemporaryDirectory();
     // TODO: 多分だけどここで全てのサムネを生成してる？これは容量の爆増を招くので修正すべき
@@ -61,7 +57,6 @@ class _FileThumbnailState extends State<FileThumbnail> {
       final data = await thumbnailPool.withResource(() {
         return computeThumbnail(widget.imageFile.path, widget.width, height: widget.height);
       });
-
       if (mounted) setState(() => _thumbnailData = data);
       await cacheFile.writeAsBytes(data);
     }
@@ -72,6 +67,13 @@ class _FileThumbnailState extends State<FileThumbnail> {
     if (_thumbnailData == null) {
       return Container(color: Colors.grey[300]);
     }
-    return Image.memory(_thumbnailData!, fit: BoxFit.cover);
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 150),
+      child: Image.memory(
+        _thumbnailData!,
+        key: ValueKey(_thumbnailData?.hashCode),
+        fit: BoxFit.cover,
+      ),
+    );
   }
 }

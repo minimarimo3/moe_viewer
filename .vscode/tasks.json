@@ -1,0 +1,13 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Flutter run (debug)",
+			"type": "shell",
+			"command": "flutter --no-version-check run -d macos -v",
+			"args": [],
+			"isBackground": false,
+			"group": "build"
+		}
+	]
+}

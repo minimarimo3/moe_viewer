@@ -4,6 +4,8 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pie_menu/pie_menu.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +19,8 @@ import '../../common_widgets/asset_thumbnail.dart';
 import '../../common_widgets/file_thumbnail.dart';
 import '../../core/providers/settings_provider.dart';
 import '../../core/repositories/image_repository.dart';
+import '../../core/services/favorites_service.dart';
+import '../../core/utils/pixiv_utils.dart';
 
 enum LoadingStatus {
   loading, // 読み込み中
@@ -42,6 +46,9 @@ class _MyHomePageState extends State<MyHomePage> {
   List<File> _imageFilesForDetail = [];
   LoadingStatus _status = LoadingStatus.loading;
 
+  // ファイル画像のサイズ取得をキャッシュして、無駄な再デコードを防ぐ
+  final Map<String, Future<Size>> _imageSizeFutureCache = {};
+
   late AutoScrollController _autoScrollController;
   final ItemScrollController _itemScrollController = ItemScrollController();
   final ItemPositionsListener _itemPositionsListener =
@@ -49,6 +56,9 @@ class _MyHomePageState extends State<MyHomePage> {
   Timer? _debounce;
 
   final bool _isAutoScrolling = false;
+  final PieMenuController _pieController = PieMenuController();
+  String? _currentTargetPath;
+  String? _currentPixivId;
 
   // initStateは、画面が作成されたときに一度だけ呼ばれる特別な場所です
   @override
@@ -73,8 +83,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _saveScrollPosition() {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    // TODO: これちょっとみじかすぎるかも？ 100ms
-    _debounce = Timer(const Duration(milliseconds: 100), () {
+  // スクロール保存の頻度を抑える
+  _debounce = Timer(const Duration(milliseconds: 300), () {
       final settings = Provider.of<SettingsProvider>(context, listen: false);
       if (!mounted) return;
 
@@ -95,7 +105,10 @@ class _MyHomePageState extends State<MyHomePage> {
           index = positions.where((pos) => pos.itemLeadingEdge < 1).last.index;
         }
       }
-      settings.setLastScrollIndex(index);
+      // 値が変化したときのみ更新（無駄なリビルドを防止）
+      if (settings.lastScrollIndex != index) {
+        settings.setLastScrollIndex(index);
+      }
     });
   }
 
@@ -134,26 +147,54 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  Future<void> _openMenuForItem(dynamic item) async {
+    String? path;
+    if (item is File) {
+      path = item.path;
+    } else if (item is AssetEntity) {
+      final f = await item.originFile;
+      path = f?.path;
+    }
+    if (path == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('この項目は操作できません')),
+      );
+      return;
+    }
+    final id = PixivUtils.extractPixivId(path);
+    setState(() {
+      _currentTargetPath = path;
+      _currentPixivId = id;
+    });
+    _pieController.openMenu();
+  }
+
   @override
   Widget build(BuildContext context) {
     // ★★★ Fileオブジェクトから画像のサイズを取得するための新しいヘルパー関数 ★★★
-    Future<Size> getImageSize(File imageFile) async {
-      final bytes = await imageFile.readAsBytes();
-      final image = await decodeImageFromList(bytes);
-      return Size(image.width.toDouble(), image.height.toDouble());
+    Future<Size> getImageSize(File imageFile) {
+      return _imageSizeFutureCache.putIfAbsent(
+        imageFile.path,
+        () async {
+          final bytes = await imageFile.readAsBytes();
+          final image = await decodeImageFromList(bytes);
+          return Size(image.width.toDouble(), image.height.toDouble());
+        },
+      );
     }
 
     // ★★★ 1列表示用の画像を構築するための新しいヘルパー関数 ★★★
-    Widget buildFullAspectRatioImage(dynamic item) {
+  Widget buildFullAspectRatioImage(dynamic item) {
       if (item is AssetEntity) {
         // AssetEntityはアスペクト比を直接持っている
         final double aspectRatio = item.width / item.height;
         return AspectRatio(
           aspectRatio: aspectRatio,
           // isOriginal: trueで高解像度版を要求
-          child: AssetEntityImage(item, isOriginal: true, fit: BoxFit.cover),
+          child: RepaintBoundary(child: AssetEntityImage(item, isOriginal: true, fit: BoxFit.cover)),
         );
-      } else if (item is File) {
+  } else if (item is File) {
         // Fileはアスペクト比を知るために、中身を非同期で読み込む必要がある
         return FutureBuilder<Size>(
           // 画像のサイズを取得するFuture
@@ -167,7 +208,7 @@ class _MyHomePageState extends State<MyHomePage> {
               final double aspectRatio = size.width / size.height;
               return AspectRatio(
                 aspectRatio: aspectRatio,
-                child: Image.file(item, fit: BoxFit.cover),
+                child: RepaintBoundary(child: Image.file(item, fit: BoxFit.cover)),
               );
             } else {
               // 読み込み中は、仮の高さを持つプレースホルダーを表示
@@ -182,6 +223,7 @@ class _MyHomePageState extends State<MyHomePage> {
         return Container(color: Colors.red);
       }
     }
+
 
     Widget buildBody() {
       final crossAxisCount = Provider.of<SettingsProvider>(
@@ -221,6 +263,9 @@ class _MyHomePageState extends State<MyHomePage> {
                               ),
                             );
                           },
+                          onLongPress: () {
+                            _openMenuForItem(item);
+                          },
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
                               vertical: 4.0,
@@ -228,7 +273,6 @@ class _MyHomePageState extends State<MyHomePage> {
                             ),
                             child: Hero(
                               tag: 'imageHero_$index',
-                              // ★★★ 型に応じて、アスペクト比を解決してから画像を表示 ★★★
                               child: buildFullAspectRatioImage(item),
                             ),
                           ),
@@ -259,18 +303,18 @@ class _MyHomePageState extends State<MyHomePage> {
                       Widget thumbnailWidget;
                       if (item is AssetEntity) {
                         // ★★★ 幅だけを指定（高さはnull）
-                        thumbnailWidget = AssetThumbnail(
+                        thumbnailWidget = RepaintBoundary(child: AssetThumbnail(
                           key: ValueKey(item.id),
                           asset: item,
                           width: thumbnailSize,
-                        );
+                        ));
                       } else if (item is File) {
                         // ★★★ 幅だけを指定（高さはnull）
-                        thumbnailWidget = FileThumbnail(
+                        thumbnailWidget = RepaintBoundary(child: FileThumbnail(
                           key: ValueKey(item.path),
                           imageFile: item,
                           width: thumbnailSize,
-                        );
+                        ));
                       } else {
                         thumbnailWidget = Container(color: Colors.red);
                       }
@@ -293,10 +337,10 @@ class _MyHomePageState extends State<MyHomePage> {
                             final prefs = await SharedPreferences.getInstance();
                             await prefs.setBool('wasOnDetailScreen', false);
                           },
-                          child: Hero(
-                            tag: 'imageHero_$index',
-                            child: thumbnailWidget,
-                          ),
+                          onLongPress: () {
+                            _openMenuForItem(item);
+                          },
+                          child: thumbnailWidget,
                         ),
                       );
                     },
@@ -389,9 +433,17 @@ class _MyHomePageState extends State<MyHomePage> {
           );
       }
     }
-
-    return Scaffold(
-      appBar: AppBar(
+    // 画面全体をPieCanvasで包み、単一PieMenuを配置
+    return PieCanvas(
+      theme: const PieTheme(
+        overlayColor: Colors.transparent,
+        buttonTheme: PieButtonTheme(backgroundColor: Colors.white, iconColor: Colors.black87),
+        buttonThemeHovered: PieButtonTheme(backgroundColor: Colors.blueAccent, iconColor: Colors.white),
+        regularPressShowsMenu: false,
+        longPressShowsMenu: false,
+      ),
+      child: Scaffold(
+        appBar: AppBar(
         title: const Text('Pixiv Viewer'),
         actions: [
           IconButton(
@@ -413,8 +465,53 @@ class _MyHomePageState extends State<MyHomePage> {
             },
           ),
         ],
+        ),
+    body: Stack(
+          children: [
+            Center(child: buildBody()),
+            // グローバルPieMenu（プログラム制御）
+            Align(
+              alignment: Alignment.center,
+              child: PieMenu(
+                controller: _pieController,
+                actions: [
+                  if (_currentPixivId != null)
+                    PieAction(
+                      tooltip: const Text('Pixivを開く'),
+                      onSelect: () async {
+                        final id = _currentPixivId;
+                        if (id == null) return;
+                        final uri = Uri.parse('https://www.pixiv.net/artworks/$id');
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri);
+                        } else if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('リンクを開けませんでした')),
+                          );
+                        }
+                      },
+                      child: const Icon(Icons.open_in_new),
+                    ),
+                  PieAction(
+                    tooltip: const Text('お気に入りを切替'),
+                    onSelect: () async {
+                      final path = _currentTargetPath;
+                      if (path == null) return;
+                      final newState = await FavoritesService.instance.toggleFavorite(path);
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました')),
+                      );
+                    },
+                    child: const Icon(Icons.favorite_border),
+                  ),
+                ],
+                child: const SizedBox.shrink(),
+              ),
+            ),
+          ],
+        ),
       ),
-      body: Center(child: buildBody()), // body部分を別メソッドに切り出す
     );
   }
 

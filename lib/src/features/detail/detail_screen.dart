@@ -10,6 +10,9 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pie_menu/pie_menu.dart';
+import '../../core/services/favorites_service.dart';
+import '../../core/utils/pixiv_utils.dart';
 
 class DetailScreen extends StatefulWidget {
   final List<File> imageFileList;
@@ -294,7 +297,16 @@ class _DetailScreenState extends State<DetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PieCanvas(
+      theme: const PieTheme(
+        overlayColor: Colors.transparent,
+        buttonTheme: PieButtonTheme(backgroundColor: Colors.white, iconColor: Colors.black87),
+        buttonThemeHovered: PieButtonTheme(backgroundColor: Colors.blueAccent, iconColor: Colors.white),
+        regularPressShowsMenu: false,
+        longPressShowsMenu: true,
+        longPressDuration: Duration(milliseconds: 350),
+      ),
+      child: Scaffold(
       // ★★★ _isUiVisibleの値に応じてAppBarを表示/非表示
       appBar: _isUiVisible
           ? AppBar(
@@ -323,7 +335,7 @@ class _DetailScreenState extends State<DetailScreen>
       // AppBarの高さを考慮するために必要
       extendBodyBehindAppBar: true,
       // ★★★ 画面全体をGestureDetectorで囲んでタップを検知
-      body: GestureDetector(
+  body: GestureDetector(
         onTap: _toggleUiVisibility,
         onDoubleTapDown: _onDoubleTap,
         child: PageView.builder(
@@ -340,6 +352,7 @@ class _DetailScreenState extends State<DetailScreen>
           },
           itemCount: widget.imageFileList.length,
           itemBuilder: (context, index) {
+            final file = widget.imageFileList[index];
             return InteractiveViewer(
               transformationController: _transformationController,
               onInteractionEnd: (details) {
@@ -353,15 +366,49 @@ class _DetailScreenState extends State<DetailScreen>
               },
               child: Center(
                 // ★★★ ここからHeroウィジェットを追加 ★★★
-                child: Hero(
+                child: PieMenu(
+                  actions: [
+                    if (PixivUtils.extractPixivId(file.path) != null)
+                      PieAction(
+                        tooltip: const Text('Pixivを開く'),
+                        onSelect: () async {
+                          final id = PixivUtils.extractPixivId(file.path);
+                          if (id != null) {
+                            final uri = Uri.parse('https://www.pixiv.net/artworks/$id');
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri);
+                            } else if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('リンクを開けませんでした')),
+                              );
+                            }
+                          }
+                        },
+                        child: const Icon(Icons.open_in_new),
+                      ),
+                    PieAction(
+                      tooltip: const Text('お気に入りを切替'),
+                      onSelect: () async {
+                        final newState = await FavoritesService.instance.toggleFavorite(file.path);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました')),
+                        );
+                      },
+                      child: const Icon(Icons.favorite_border),
+                    ),
+                  ],
                   // メイン画面と同じルールでタグを生成
-                  tag: 'imageHero_$index',
-                  child: Image.file(widget.imageFileList[index]),
+                  child: Hero(
+                    tag: 'imageHero_$index',
+                    child: RepaintBoundary(child: Image.file(file)),
+                  ),
                 ),
               ),
             );
           },
         ),
+      ),
       ),
     );
   }

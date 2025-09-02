@@ -67,6 +67,13 @@ class DatabaseHelper {
     return null; // データがなければnullを返す
   }
 
+  // 既存タグを取得し、関数で編集して保存するユーティリティ（予約タグの拡張に備える）
+  Future<void> editTags(String path, List<String> Function(List<String>) editor) async {
+    final current = await getTagsForPath(path) ?? <String>[];
+    final next = editor(List<String>.from(current));
+    await insertOrUpdateTag(path, next);
+  }
+
   // （将来の検索機能のための準備）
   Future<List<Map<String, dynamic>>> searchByTag(String tag) async {
     final db = await instance.database;
