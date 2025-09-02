@@ -265,7 +265,8 @@ class _DetailScreenState extends State<DetailScreen>
       // 拡大されていない場合は、タップした位置を中心に2.5倍に拡大
       endMatrix = Matrix4.identity()
         ..translateByVector3(
-            Vector3(-position.dx * 1.5, -position.dy * 1.5, 0.0))
+          Vector3(-position.dx * 1.5, -position.dy * 1.5, 0.0),
+        )
         ..scaleByVector3(Vector3(2.5, 2.5, 1.0));
     }
 
@@ -300,115 +301,128 @@ class _DetailScreenState extends State<DetailScreen>
     return PieCanvas(
       theme: const PieTheme(
         overlayColor: Colors.transparent,
-        buttonTheme: PieButtonTheme(backgroundColor: Colors.white, iconColor: Colors.black87),
-        buttonThemeHovered: PieButtonTheme(backgroundColor: Colors.blueAccent, iconColor: Colors.white),
+        buttonTheme: PieButtonTheme(
+          backgroundColor: Colors.white,
+          iconColor: Colors.black87,
+        ),
+        buttonThemeHovered: PieButtonTheme(
+          backgroundColor: Colors.blueAccent,
+          iconColor: Colors.white,
+        ),
         regularPressShowsMenu: false,
         longPressShowsMenu: true,
         longPressDuration: Duration(milliseconds: 350),
       ),
       child: Scaffold(
-      // ★★★ _isUiVisibleの値に応じてAppBarを表示/非表示
-      appBar: _isUiVisible
-          ? AppBar(
-              backgroundColor: Colors.grey,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.share_outlined),
-                  onPressed: () {
-                    final currentImage = widget.imageFileList[_currentIndex];
-                    // XFileに変換して共有（新API）
-                    SharePlus.instance.share(
-                      ShareParams(files: [XFile(currentImage.path)]),
-                    );
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.info_outline),
-                  onPressed: () {
-                    final currentImage = widget.imageFileList[_currentIndex];
-                    _showImageDetails(currentImage);
-                  },
-                ),
-              ],
-            )
-          : null,
-      // AppBarの高さを考慮するために必要
-      extendBodyBehindAppBar: true,
-      // ★★★ 画面全体をGestureDetectorで囲んでタップを検知
-  body: GestureDetector(
-        onTap: _toggleUiVisibility,
-        onDoubleTapDown: _onDoubleTap,
-        child: PageView.builder(
-          controller: _pageController,
-          physics: _isPagingEnabled
-              ? const PageScrollPhysics()
-              : const NeverScrollableScrollPhysics(),
-          onPageChanged: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-            _saveCurrentState();
-            _precacheAdjacentImages(index);
-          },
-          itemCount: widget.imageFileList.length,
-          itemBuilder: (context, index) {
-            final file = widget.imageFileList[index];
-            return InteractiveViewer(
-              transformationController: _transformationController,
-              onInteractionEnd: (details) {
-                if (_transformationController.value.getMaxScaleOnAxis() <=
-                    1.0) {
-                  // 必要ならここで isPagingEnabled を true に戻すロジックを追加
-                  setState(() {
-                    _isPagingEnabled = true;
-                  });
-                }
-              },
-              child: Center(
-                // ★★★ ここからHeroウィジェットを追加 ★★★
-                child: PieMenu(
-                  actions: [
-                    if (PixivUtils.extractPixivId(file.path) != null)
-                      PieAction(
-                        tooltip: const Text('Pixivを開く'),
-                        onSelect: () async {
-                          final id = PixivUtils.extractPixivId(file.path);
-                          if (id != null) {
-                            final uri = Uri.parse('https://www.pixiv.net/artworks/$id');
-                            if (await canLaunchUrl(uri)) {
-                              await launchUrl(uri);
-                            } else if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('リンクを開けませんでした')),
+        // ★★★ _isUiVisibleの値に応じてAppBarを表示/非表示
+        appBar: _isUiVisible
+            ? AppBar(
+                backgroundColor: Colors.grey,
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.share_outlined),
+                    onPressed: () {
+                      final currentImage = widget.imageFileList[_currentIndex];
+                      // XFileに変換して共有（新API）
+                      SharePlus.instance.share(
+                        ShareParams(files: [XFile(currentImage.path)]),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.info_outline),
+                    onPressed: () {
+                      final currentImage = widget.imageFileList[_currentIndex];
+                      _showImageDetails(currentImage);
+                    },
+                  ),
+                ],
+              )
+            : null,
+        // AppBarの高さを考慮するために必要
+        extendBodyBehindAppBar: true,
+        // ★★★ 画面全体をGestureDetectorで囲んでタップを検知
+        body: GestureDetector(
+          onTap: _toggleUiVisibility,
+          onDoubleTapDown: _onDoubleTap,
+          child: PageView.builder(
+            controller: _pageController,
+            physics: _isPagingEnabled
+                ? const PageScrollPhysics()
+                : const NeverScrollableScrollPhysics(),
+            onPageChanged: (index) {
+              setState(() {
+                _currentIndex = index;
+              });
+              _saveCurrentState();
+              _precacheAdjacentImages(index);
+            },
+            itemCount: widget.imageFileList.length,
+            itemBuilder: (context, index) {
+              final file = widget.imageFileList[index];
+              return InteractiveViewer(
+                transformationController: _transformationController,
+                onInteractionEnd: (details) {
+                  if (_transformationController.value.getMaxScaleOnAxis() <=
+                      1.0) {
+                    // 必要ならここで isPagingEnabled を true に戻すロジックを追加
+                    setState(() {
+                      _isPagingEnabled = true;
+                    });
+                  }
+                },
+                child: Center(
+                  // ★★★ ここからHeroウィジェットを追加 ★★★
+                  child: PieMenu(
+                    actions: [
+                      if (PixivUtils.extractPixivId(file.path) != null)
+                        PieAction(
+                          tooltip: const Text('Pixivを開く'),
+                          onSelect: () async {
+                            final id = PixivUtils.extractPixivId(file.path);
+                            if (id != null) {
+                              final uri = Uri.parse(
+                                'https://www.pixiv.net/artworks/$id',
                               );
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri);
+                              } else if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('リンクを開けませんでした')),
+                                );
+                              }
                             }
-                          }
+                          },
+                          child: const Icon(Icons.open_in_new),
+                        ),
+                      PieAction(
+                        tooltip: const Text('お気に入りを切替'),
+                        onSelect: () async {
+                          final newState = await FavoritesService.instance
+                              .toggleFavorite(file.path);
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました',
+                              ),
+                            ),
+                          );
                         },
-                        child: const Icon(Icons.open_in_new),
+                        child: const Icon(Icons.favorite_border),
                       ),
-                    PieAction(
-                      tooltip: const Text('お気に入りを切替'),
-                      onSelect: () async {
-                        final newState = await FavoritesService.instance.toggleFavorite(file.path);
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました')),
-                        );
-                      },
-                      child: const Icon(Icons.favorite_border),
+                    ],
+                    // メイン画面と同じルールでタグを生成
+                    child: Hero(
+                      tag: 'imageHero_$index',
+                      child: RepaintBoundary(child: Image.file(file)),
                     ),
-                  ],
-                  // メイン画面と同じルールでタグを生成
-                  child: Hero(
-                    tag: 'imageHero_$index',
-                    child: RepaintBoundary(child: Image.file(file)),
                   ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
-      ),
       ),
     );
   }

@@ -24,12 +24,12 @@ class _DispatchScreenState extends State<DispatchScreen> {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     await settings.init();
 
-  // ここでは権限を要求せず、現在の状態だけを確認する
-  final status = await Permission.photos.status;
+    // ここでは権限を要求せず、現在の状態だけを確認する
+    final status = await Permission.photos.status;
 
     if (!mounted) return;
 
-  if (status.isGranted || status.isLimited) {
+    if (status.isGranted || status.isLimited) {
       // 権限があればメイン画面へ
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(

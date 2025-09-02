@@ -152,7 +152,6 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _openMenuForItem(dynamic item, [Offset? globalPosition]) async {
-
     /*
     // 1) まず、現在のタップ位置でメニューを即時に開く（非同期待ちで座標がズレないようにする）
     if (globalPosition != null && _canvasKey.currentContext != null) {
@@ -177,8 +176,8 @@ class _MyHomePageState extends State<MyHomePage> {
       path = item.path;
     } else if (item is AssetEntity) {
       // まずはファイル取得を行わずにタイトル（ファイル名）だけで判定して高速化
-  final title = await item.titleAsync; // 例: illust_12345678_p0.jpg
-  if (title.isNotEmpty) {
+      final title = await item.titleAsync; // 例: illust_12345678_p0.jpg
+      if (title.isNotEmpty) {
         path = title; // PixivUtilsは末尾のファイル名を使うためこれでOK
       } else {
         // タイトルが取れない場合のみファイルを取得
@@ -494,54 +493,50 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     // 画面全体をPieCanvasで包み、単一PieMenuを配置
-    return  Scaffold(
-        appBar: AppBar(
-          title: const Text('Pixiv Viewer'),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.shuffle),
-              tooltip: '表示順をシャッフル',
-              onPressed: () {
-                _showShuffleConfirmationDialog();
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.settings_outlined),
-              onPressed: () async {
-                // 設定画面に移動し、戻ってくるのを待つ
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SettingsScreen(),
-                  ),
-                );
-                _loadImages();
-              },
-            ),
-          ],
-        ),
-        body: 
-        PieCanvas(
-      key: _canvasKey,
-      theme: const PieTheme(
-        overlayColor: Colors.transparent,
-        buttonTheme: PieButtonTheme(
-          backgroundColor: Colors.white,
-          iconColor: Colors.black87,
-        ),
-        buttonThemeHovered: PieButtonTheme(
-          backgroundColor: Colors.blueAccent,
-          iconColor: Colors.white,
-        ),
-        regularPressShowsMenu: false,
-        longPressShowsMenu: false,
-        menuAlignment: Alignment.topLeft,
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Pixiv Viewer'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.shuffle),
+            tooltip: '表示順をシャッフル',
+            onPressed: () {
+              _showShuffleConfirmationDialog();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () async {
+              // 設定画面に移動し、戻ってくるのを待つ
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+              _loadImages();
+            },
+          ),
+        ],
       ),
-      onMenuToggle: (open) {
-        _isMenuOpen = open;
-      },
-      child:
-        Stack(
+      body: PieCanvas(
+        key: _canvasKey,
+        theme: const PieTheme(
+          overlayColor: Colors.transparent,
+          buttonTheme: PieButtonTheme(
+            backgroundColor: Colors.white,
+            iconColor: Colors.black87,
+          ),
+          buttonThemeHovered: PieButtonTheme(
+            backgroundColor: Colors.blueAccent,
+            iconColor: Colors.white,
+          ),
+          regularPressShowsMenu: false,
+          longPressShowsMenu: false,
+          menuAlignment: Alignment.topLeft,
+        ),
+        onMenuToggle: (open) {
+          _isMenuOpen = open;
+        },
+        child: Stack(
           children: [
             Center(
               child: NotificationListener<ScrollNotification>(

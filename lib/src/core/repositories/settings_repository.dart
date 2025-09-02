@@ -15,8 +15,9 @@ class SettingsRepository {
 
   Future<void> saveFolderSettings(List<FolderSetting> folderSettings) async {
     final prefs = await SharedPreferences.getInstance();
-    final List<Map<String, dynamic>> folderList =
-        folderSettings.map((f) => f.toMap()).toList();
+    final List<Map<String, dynamic>> folderList = folderSettings
+        .map((f) => f.toMap())
+        .toList();
     await prefs.setString(_foldersKey, jsonEncode(folderList));
   }
 

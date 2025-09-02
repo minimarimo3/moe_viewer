@@ -127,7 +127,8 @@ class SettingsProvider extends ChangeNotifier {
     final albumMap = {
       for (var album in allAlbums) album.name.toLowerCase(): album,
     };
-    final hasFullAccess = await Permission.manageExternalStorage.status.isGranted;
+    final hasFullAccess =
+        await Permission.manageExternalStorage.status.isGranted;
 
     for (final path in selectedPaths) {
       final folderName = path.split('/').last.toLowerCase();

@@ -68,7 +68,10 @@ class DatabaseHelper {
   }
 
   // 既存タグを取得し、関数で編集して保存するユーティリティ（予約タグの拡張に備える）
-  Future<void> editTags(String path, List<String> Function(List<String>) editor) async {
+  Future<void> editTags(
+    String path,
+    List<String> Function(List<String>) editor,
+  ) async {
     final current = await getTagsForPath(path) ?? <String>[];
     final next = editor(List<String>.from(current));
     await insertOrUpdateTag(path, next);

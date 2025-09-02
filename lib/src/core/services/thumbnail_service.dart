@@ -4,14 +4,12 @@ import 'dart:developer';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
-
 class ThumbnailRequest {
   final String filePath;
   final int width;
   final int? height; // ★★★ 高さはnullを許容
   ThumbnailRequest(this.filePath, this.width, this.height);
 }
-
 
 // Isolate（バックグラウンド）で実行されるサムネイル生成関数
 Future<Uint8List> _generateThumbnail(ThumbnailRequest request) async {
@@ -34,7 +32,11 @@ Future<Uint8List> _generateThumbnail(ThumbnailRequest request) async {
   */
   // if (image == null) return Uint8List.fromList(bytes);
 
-  final thumbnail = img.copyResize(image, width: request.width, height: request.height);
+  final thumbnail = img.copyResize(
+    image,
+    width: request.width,
+    height: request.height,
+  );
   return Uint8List.fromList(img.encodeJpg(thumbnail, quality: 90));
 }
 

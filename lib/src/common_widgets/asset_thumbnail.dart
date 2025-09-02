@@ -29,10 +29,10 @@ class _AssetThumbnailState extends State<AssetThumbnail> {
   }
 
   Future<void> _loadThumbnail() async {
-  // 幅が0のアセットだと整数除算が例外になるため防御
-  final assetWidth = widget.asset.width == 0 ? 1 : widget.asset.width;
-  final int targetHeight = widget.height ??
-    (widget.asset.height * widget.width ~/ assetWidth);
+    // 幅が0のアセットだと整数除算が例外になるため防御
+    final assetWidth = widget.asset.width == 0 ? 1 : widget.asset.width;
+    final int targetHeight =
+        widget.height ?? (widget.asset.height * widget.width ~/ assetWidth);
 
     final data = await widget.asset.thumbnailDataWithSize(
       ThumbnailSize(widget.width, targetHeight),
