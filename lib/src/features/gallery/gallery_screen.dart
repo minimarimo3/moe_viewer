@@ -176,12 +176,16 @@ class _MyHomePageState extends State<MyHomePage> {
     if (item is File) {
       path = item.path;
     } else if (item is AssetEntity) {
-      final f = await item.originFile;
-      if (f == null) {
-        // TODO: エラー通知ファイルが取得できなかった場合は処理を中断
-        return;
+      // まずはファイル取得を行わずにタイトル（ファイル名）だけで判定して高速化
+  final title = await item.titleAsync; // 例: illust_12345678_p0.jpg
+  if (title.isNotEmpty) {
+        path = title; // PixivUtilsは末尾のファイル名を使うためこれでOK
+      } else {
+        // タイトルが取れない場合のみファイルを取得
+        final f = await item.originFile;
+        if (f == null) return; // 取得不可なら何もしない
+        path = f.path;
       }
-      path = f.path;
     }
 
     if (!mounted) return;
@@ -200,22 +204,25 @@ class _MyHomePageState extends State<MyHomePage> {
     if (!mounted) return;
     setState(() {
       _currentTargetPath = path;
-      _currentPixivId = id;
+      _currentPixivId = id; // nullの可能性あり
     });
-    // 1) まず、現在のタップ位置でメニューを即時に開く（非同期待ちで座標がズレないようにする）
-    if (globalPosition != null && _canvasKey.currentContext != null) {
-      final box = _canvasKey.currentContext!.findRenderObject() as RenderBox?;
-      if (box != null) {
-        final localPosition = box.globalToLocal(globalPosition);
-        log('Global position: $globalPosition');
-        log('Local position: $localPosition');
-        _pieController.openMenu(menuDisplacement: localPosition);
-      } else {
-        _pieController.openMenu();
+
+    // setState後のフレームで開く（内容反映のズレを防ぐ）
+    final capturedGlobal = globalPosition;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (capturedGlobal != null && _canvasKey.currentContext != null) {
+        final box = _canvasKey.currentContext!.findRenderObject() as RenderBox?;
+        if (box != null) {
+          final localPosition = box.globalToLocal(capturedGlobal);
+          log('Global position: $capturedGlobal');
+          log('Local position: $localPosition');
+          _pieController.openMenu(menuDisplacement: localPosition);
+          return;
+        }
       }
-    } else {
       _pieController.openMenu();
-    }
+    });
   }
 
   @override
