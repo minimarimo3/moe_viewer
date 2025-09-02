@@ -24,18 +24,23 @@ class DetailPieMenuWidgetState extends State<DetailPieMenuWidget> {
   final GlobalKey _canvasKey = GlobalKey();
 
   void openMenuAtPosition([Offset? globalPosition]) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (globalPosition != null && _canvasKey.currentContext != null) {
-        final box = _canvasKey.currentContext!.findRenderObject() as RenderBox?;
-        if (box != null) {
-          final localPosition = box.globalToLocal(globalPosition);
-          _pieController.openMenu(menuDisplacement: localPosition);
-          return;
-        }
+    print('--- detail openMenuAtPosition called at position: $globalPosition ---');
+    
+    // すぐにメニューを開く（WidgetsBinding.instance.addPostFrameCallbackを使わない）
+    if (!mounted) return;
+    print('Opening pie menu immediately...');
+    
+    if (globalPosition != null && _canvasKey.currentContext != null) {
+      final box = _canvasKey.currentContext!.findRenderObject() as RenderBox?;
+      if (box != null) {
+        final localPosition = box.globalToLocal(globalPosition);
+        print('Opening at local position: $localPosition');
+        _pieController.openMenu(menuDisplacement: localPosition);
+        return;
       }
-      _pieController.openMenu();
-    });
+    }
+    print('Opening at center');
+    _pieController.openMenu();
   }
 
   @override
