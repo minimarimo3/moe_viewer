@@ -37,9 +37,10 @@ class ImageRepository {
           end: await album.assetCountAsync,
         );
         for (final asset in assets) {
-          allDisplayItems.add(asset);
           final file = await asset.file;
+          // ファイルが取得できるものだけを表示対象にする（インデックス不整合を防止）
           if (file != null) {
+            allDisplayItems.add(asset);
             allDetailFiles.add(file);
           }
         }

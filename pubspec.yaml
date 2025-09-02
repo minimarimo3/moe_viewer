@@ -57,6 +57,8 @@ dependencies:
   share_plus: ^11.1.0
   # URLを開く
   url_launcher: ^6.3.2
+  # 行列演算（Matrix4の補助型）
+  vector_math: ^2.1.4
   # ローカルAIを実装
   tflite_flutter: ^0.11.0
   # flutter_tflite: ^1.0.1

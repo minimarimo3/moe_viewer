@@ -118,7 +118,8 @@ class SettingsProvider extends ChangeNotifier {
     // --- ファイル総数の計算ロジック ---
     final enabledFolders = _folderSettings.where((f) => f.isEnabled).toList();
     final selectedPaths = enabledFolders.map((f) => f.path).toList();
-    List<File> allImageFiles = [];
+
+    int totalCount = 0;
 
     final allAlbums = await PhotoManager.getAssetPathList(
       filterOption: FilterOptionGroup(includeHiddenAssets: true),
@@ -126,16 +127,14 @@ class SettingsProvider extends ChangeNotifier {
     final albumMap = {
       for (var album in allAlbums) album.name.toLowerCase(): album,
     };
-    final hasFullAccess =
-        await Permission.manageExternalStorage.status.isGranted;
+    final hasFullAccess = await Permission.manageExternalStorage.status.isGranted;
 
     for (final path in selectedPaths) {
       final folderName = path.split('/').last.toLowerCase();
       if (albumMap.containsKey(folderName)) {
         final album = albumMap[folderName]!;
-        // ★★★ ここではAssetEntityの数を数えるだけで、Fileには変換しない（高速化） ★★★
         final assetCount = await album.assetCountAsync;
-        _totalFileCount += assetCount;
+        totalCount += assetCount;
       } else if (hasFullAccess) {
         final directory = Directory(path);
         if (await directory.exists()) {
@@ -147,14 +146,14 @@ class SettingsProvider extends ChangeNotifier {
                   filePath.endsWith('.png') ||
                   filePath.endsWith('.jpeg') ||
                   filePath.endsWith('.gif')) {
-                allImageFiles.add(fileEntity);
+                totalCount += 1;
               }
             }
           }
         }
       }
     }
-    _totalFileCount = allImageFiles.length;
+    _totalFileCount = totalCount;
     // --- 計算ロジックここまで ---
 
     final analyzedCount = await DatabaseHelper.instance.getAnalyzedFileCount();

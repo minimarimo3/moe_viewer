@@ -50,7 +50,8 @@ class _FileThumbnailState extends State<FileThumbnail> {
     // TODO: 多分だけどここで全てのサムネを生成してる？これは容量の爆増を招くので修正すべき
     //  もしアルバム内のファイルならサムネの生成は無効でいいはず。(元々してないかもしれないけど)
     // final cacheFileName = 'thumb_${widget.imageFile.path.hashCode}.jpg';
-    final cacheFileName = 'thumb_${widget.imageFile.path.hashCode}_w${widget.width}_h${widget.height}.jpg';
+  final h = widget.height?.toString() ?? 'auto';
+  final cacheFileName = 'thumb_${widget.imageFile.path.hashCode}_w${widget.width}_h$h.jpg';
     final cacheFile = File(p.join(tempDir.path, cacheFileName));
 
     if (await cacheFile.exists()) {

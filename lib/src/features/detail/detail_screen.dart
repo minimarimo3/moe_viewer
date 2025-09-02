@@ -261,7 +261,8 @@ class _DetailScreenState extends State<DetailScreen>
     } else {
       // 拡大されていない場合は、タップした位置を中心に2.5倍に拡大
       endMatrix = Matrix4.identity()
-        ..translateByVector3(Vector3(-position.dx * 1.5, -position.dy * 1.5, 0.0))
+        ..translateByVector3(
+            Vector3(-position.dx * 1.5, -position.dy * 1.5, 0.0))
         ..scaleByVector3(Vector3(2.5, 2.5, 1.0));
     }
 
@@ -303,8 +304,7 @@ class _DetailScreenState extends State<DetailScreen>
                   icon: const Icon(Icons.share_outlined),
                   onPressed: () {
                     final currentImage = widget.imageFileList[_currentIndex];
-                    // XFileに変換して共有
-                    // Share.shareXFiles([XFile(currentImage.path)]);
+                    // XFileに変換して共有（新API）
                     SharePlus.instance.share(
                       ShareParams(files: [XFile(currentImage.path)]),
                     );
@@ -346,7 +346,9 @@ class _DetailScreenState extends State<DetailScreen>
                 if (_transformationController.value.getMaxScaleOnAxis() <=
                     1.0) {
                   // 必要ならここで isPagingEnabled を true に戻すロジックを追加
-                  _isPagingEnabled = true;
+                  setState(() {
+                    _isPagingEnabled = true;
+                  });
                 }
               },
               child: Center(

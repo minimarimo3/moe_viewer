@@ -22,9 +22,7 @@ class IsolateAnalyzeRequest {
 }
 
 void _aiIsolateEntry(IsolateInitMessage initMessage) async {
-  // AIを使用しない場合
-  if (initMessage.labelFileName == "") return;
-
+  // 常にメッセージングを初期化して ready を返す（モデルなしでもハングしないように）
   log("この関数は次の関数から呼び出されました: ${StackTrace.current}");
   final mainSendPort = initMessage.sendPort;
   final token = initMessage.token;
@@ -35,25 +33,30 @@ void _aiIsolateEntry(IsolateInitMessage initMessage) async {
 
   Interpreter? interpreter;
   List<String>? labels;
-  try {
-    final directory = await getApplicationSupportDirectory();
-    final modelPath = '${directory.path}/${initMessage.modelFileName}';
-    final labelPath = '${directory.path}/${initMessage.labelFileName}';
 
-    interpreter = Interpreter.fromFile(File(modelPath));
-    final labelString = await File(labelPath).readAsString();
-    labels = labelString
-        .split('\n')
-        .where((line) => line.isNotEmpty)
-        .map((line) {
-          final parts = line.split(',');
-          return parts.length > 1 ? parts[1].replaceAll('"', '').trim() : '';
-        })
-        .where((tag) => tag.isNotEmpty)
-        .toList();
-    log('AI Isolate: Model and labels loaded successfully.');
-  } catch (e) {
-    log('AI Isolate: Failed to load model or labels: $e');
+  // モデル・ラベルが指定されている場合のみロードを試行
+  if (initMessage.labelFileName.isNotEmpty &&
+      initMessage.modelFileName.isNotEmpty) {
+    try {
+      final directory = await getApplicationSupportDirectory();
+      final modelPath = '${directory.path}/${initMessage.modelFileName}';
+      final labelPath = '${directory.path}/${initMessage.labelFileName}';
+
+      interpreter = Interpreter.fromFile(File(modelPath));
+      final labelString = await File(labelPath).readAsString();
+      labels = labelString
+          .split('\n')
+          .where((line) => line.isNotEmpty)
+          .map((line) {
+            final parts = line.split(',');
+            return parts.length > 1 ? parts[1].replaceAll('"', '').trim() : '';
+          })
+          .where((tag) => tag.isNotEmpty)
+          .toList();
+      log('AI Isolate: Model and labels loaded successfully.');
+    } catch (e) {
+      log('AI Isolate: Failed to load model or labels: $e');
+    }
   }
 
   mainSendPort.send('ready'); // 準備完了をメインスレッドに通知
@@ -181,7 +184,8 @@ Map<String, dynamic> _analyze(
   }
 
   // --- 推論 ---
-  var output = List.filled(1 * labels.length, 0.0).reshape([1, labels.length]);
+  // 出力テンソル [1, num_labels]
+  final output = List.generate(1, (_) => List.filled(labels.length, 0.0));
   interpreter.run(inputTensor, output);
 
   // --- 結果解析 ---
