@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart'; // ★★★ SystemChromeのためにインポート ★★★
 import 'package:provider/provider.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
@@ -31,7 +33,7 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   final _imageRepository = ImageRepository();
   // 一覧で表示されるアイテムのリスト
   List<dynamic> _displayItems = [];
@@ -49,14 +51,21 @@ class _MyHomePageState extends State<MyHomePage> {
   Timer? _debounce;
 
   final bool _isAutoScrolling = false;
-  final GlobalKey<GalleryPieMenuWidgetState> _pieMenuKey = GlobalKey<GalleryPieMenuWidgetState>();
+  final GlobalKey<GalleryPieMenuWidgetState> _pieMenuKey =
+      GlobalKey<GalleryPieMenuWidgetState>();
+
+  // AppBarアニメーション用コントローラー
+  late AnimationController _appBarAnimationController;
+  bool _isAppBarVisible = true;
+  // ★★★ 前回のスクロール位置を保持する変数 ★★★
+  double _lastScrollOffset = 0.0;
 
   void _handleLongPress(dynamic item, Offset globalPosition) {
     // pie menu widget内でopenMenuForItemを呼び出すためのハンドラー
     log('--- _handleLongPress called ---');
     if (mounted) {
       log('Long press detected on item: $item at position: $globalPosition');
-      
+
       // GlobalKeyを使用して直接アクセス
       final pieMenuState = _pieMenuKey.currentState;
       if (pieMenuState != null) {
@@ -64,9 +73,10 @@ class _MyHomePageState extends State<MyHomePage> {
         pieMenuState.openMenuForItem(item, globalPosition);
         return;
       }
-      
+
       // findAncestorStateOfTypeも試してみる
-      final pieMenuWidget = context.findAncestorStateOfType<GalleryPieMenuWidgetState>();
+      final pieMenuWidget =
+          context.findAncestorStateOfType<GalleryPieMenuWidgetState>();
       log('Found pie menu widget: ${pieMenuWidget != null}');
       if (pieMenuWidget != null) {
         log('Calling openMenuForItem...');
@@ -77,14 +87,17 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  // initStateは、画面が作成されたときに一度だけ呼ばれる特別な場所です
   @override
   void initState() {
     super.initState();
 
     _autoScrollController = AutoScrollController();
 
-    // ★★★ スクロール位置の保存リスナーを、両対応に ★★★
+    _appBarAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    )..forward(); // 初期状態は表示
+
     _itemPositionsListener.itemPositions.addListener(_saveScrollPosition);
     _autoScrollController.addListener(_saveScrollPosition);
 
@@ -93,8 +106,11 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   void dispose() {
+    // ★★★ 画面を離れるときにシステムUIを元に戻す ★★★
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _autoScrollController.dispose();
     _debounce?.cancel();
+    _appBarAnimationController.dispose();
     super.dispose();
   }
 
@@ -111,8 +127,7 @@ class _MyHomePageState extends State<MyHomePage> {
         if (_autoScrollController.hasClients) {
           final screenWidth = MediaQuery.of(context).size.width;
           final itemSize = screenWidth / settings.gridCrossAxisCount;
-          index =
-              (_autoScrollController.offset / itemSize).floor() *
+          index = (_autoScrollController.offset / itemSize).floor() *
               settings.gridCrossAxisCount;
         }
       } else {
@@ -142,9 +157,8 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       _displayItems = imageList.displayItems;
       _imageFilesForDetail = imageList.detailFiles;
-      _status = _displayItems.isEmpty
-          ? LoadingStatus.empty
-          : LoadingStatus.completed;
+      _status =
+          _displayItems.isEmpty ? LoadingStatus.empty : LoadingStatus.completed;
     });
 
     log('合計 ${imageList.displayItems.length} 個のアイテムが見つかりました（詳細画面用リストも準備完了）。');
@@ -173,12 +187,18 @@ class _MyHomePageState extends State<MyHomePage> {
         context,
       ).gridCrossAxisCount;
 
+      if (crossAxisCount > 1 && !_isAppBarVisible) {
+        _appBarAnimationController.forward();
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); // UI表示
+        _isAppBarVisible = true;
+      }
+
       switch (_status) {
         case LoadingStatus.loading:
           return const CircularProgressIndicator();
         case LoadingStatus.empty:
           return const Text(
-            '画像が見つかりません.\n設定からフォルダを追加してください。',
+            '画像が見つかりません。\n設定からフォルダを追加してください。',
             textAlign: TextAlign.center,
           );
         case LoadingStatus.completed:
@@ -186,13 +206,41 @@ class _MyHomePageState extends State<MyHomePage> {
             children: [
               // メイン表示ウィジェット
               if (crossAxisCount == 1)
-                GalleryListWidget(
-                  displayItems: _displayItems,
-                  imageFilesForDetail: _imageFilesForDetail,
-                  itemScrollController: _itemScrollController,
-                  itemPositionsListener: _itemPositionsListener,
-                  onLongPress: _handleLongPress,
-                  imageSizeFutureCache: _imageSizeFutureCache,
+                // ★★★ `UserScrollNotification` から `ScrollNotification` に変更 ★★★
+                NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    // ★★★ スクロール開始時と終了時は無視し、スクロール中のみ処理 ★★★
+                    if (notification is ScrollUpdateNotification) {
+                      final scrollDelta = notification.metrics.pixels - _lastScrollOffset;
+                      const scrollThreshold = 10.0; // しきい値
+
+                      if (scrollDelta.abs() > scrollThreshold) {
+                        if (scrollDelta > 0 && _isAppBarVisible) {
+                          // 下にスクロール
+                          _appBarAnimationController.reverse();
+                          // ★★★ ステータスバーなどを非表示（没入モード） ★★★
+                          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+                          _isAppBarVisible = false;
+                        } else if (scrollDelta < 0 && !_isAppBarVisible) {
+                          // 上にスクロール
+                          _appBarAnimationController.forward();
+                           // ★★★ ステータスバーなどを表示 ★★★
+                          SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+                          _isAppBarVisible = true;
+                        }
+                      }
+                      _lastScrollOffset = notification.metrics.pixels;
+                    }
+                    return true;
+                  },
+                  child: GalleryListWidget(
+                    displayItems: _displayItems,
+                    imageFilesForDetail: _imageFilesForDetail,
+                    itemScrollController: _itemScrollController,
+                    itemPositionsListener: _itemPositionsListener,
+                    onLongPress: _handleLongPress,
+                    imageSizeFutureCache: _imageSizeFutureCache,
+                  ),
                 )
               else
                 GalleryGridWidget(
@@ -232,30 +280,35 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     }
 
-    // 画面全体をGalleryPieMenuWidgetで包む
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Pixiv Viewer'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.shuffle),
-            tooltip: '表示順をシャッフル',
-            onPressed: () {
-              _showShuffleConfirmationDialog();
-            },
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: SizeTransition(
+          sizeFactor: _appBarAnimationController,
+          child: AppBar(
+            title: const Text('Pixiv Viewer'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.shuffle),
+                tooltip: '表示順をシャッフル',
+                onPressed: () {
+                  _showShuffleConfirmationDialog();
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const SettingsScreen()),
+                  );
+                  _loadImages();
+                },
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () async {
-              // 設定画面に移動し、戻ってくるのを待つ
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
-              );
-              _loadImages();
-            },
-          ),
-        ],
+        ),
       ),
       body: GalleryPieMenuWidget(
         key: _pieMenuKey,
@@ -268,7 +321,8 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _showShuffleConfirmationDialog() async {
-    final confirm = await GalleryShuffleUtils.showShuffleConfirmationDialog(context);
+    final confirm =
+        await GalleryShuffleUtils.showShuffleConfirmationDialog(context);
 
     if (confirm == true) {
       _shuffleImages();
