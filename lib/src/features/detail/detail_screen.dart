@@ -323,9 +323,18 @@ class _DetailScreenState extends State<DetailScreen>
                     icon: const Icon(Icons.share_outlined),
                     onPressed: () {
                       final currentImage = widget.imageFileList[_currentIndex];
+                      // TODO: 課金で削除？
+                      String shareText = "これはmoe_viewerで共有されました。\n";
+                      if (PixivUtils.extractPixivId(currentImage.path) != null) {
+                        shareText +=
+                            "イラストのPixivのリンク: https://www.pixiv.net/artworks/${PixivUtils.extractPixivId(currentImage.path)}";
+                      }
                       // XFileに変換して共有（新API）
                       SharePlus.instance.share(
-                        ShareParams(files: [XFile(currentImage.path)]),
+                        ShareParams(
+                          files: [XFile(currentImage.path)],
+                          text: shareText,
+                        ),
                       );
                     },
                   ),
