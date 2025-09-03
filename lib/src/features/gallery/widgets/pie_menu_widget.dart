@@ -46,14 +46,11 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
     if (item is File) {
       path = item.path;
     } else if (item is AssetEntity) {
-      final title = await item.titleAsync;
-      if (title.isNotEmpty) {
-        path = title;
-      } else {
-        final f = await item.originFile;
-        if (f == null) return;
-        path = f.path;
-      }
+      // 実ファイルパス（できればfile、だめならoriginFile）
+      final file = await item.file;
+      final origin = file ?? await item.originFile;
+      if (origin == null) return;
+      path = origin.path;
     }
 
     if (!mounted) return;

@@ -72,6 +72,9 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   List<String> _allTags = [];
   List<String> _suggestions = [];
   OverlayEntry? _suggestionsOverlay;
+  // 検索結果の固定（Enter確定）
+  bool _isFilterActive = false;
+  List<int> _activeFilterIndices = [];
 
   void _handleLongPress(dynamic item, Offset globalPosition) {
     // pie menu widget内でopenMenuForItemを呼び出すためのハンドラー
@@ -223,14 +226,22 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         _isAppBarVisible = true;
       }
 
-      // 検索クエリが空でなければ、検索結果を反映
-      final hasQuery =
-          _isSearchMode && _searchController.text.trim().isNotEmpty;
-      final effectiveDisplayItems = hasQuery
-          ? _filteredDetailIndices.map((i) => _displayItems[i]).toList()
+      // 有効な検索（Enter確定）や入力中の検索を反映
+      final hasActiveFilter = _isFilterActive;
+      final hasQuery = _isSearchMode && _searchController.text.trim().isNotEmpty;
+      List<int> indices;
+      if (hasActiveFilter) {
+        indices = _activeFilterIndices;
+      } else if (hasQuery) {
+        indices = _filteredDetailIndices;
+      } else {
+        indices = const [];
+      }
+      final effectiveDisplayItems = (hasActiveFilter || hasQuery)
+          ? indices.map((i) => _displayItems[i]).toList()
           : _displayItems;
-      final effectiveDetailFiles = hasQuery
-          ? _filteredDetailIndices.map((i) => _imageFilesForDetail[i]).toList()
+      final effectiveDetailFiles = (hasActiveFilter || hasQuery)
+          ? indices.map((i) => _imageFilesForDetail[i]).toList()
           : _imageFilesForDetail;
 
   switch (_status) {
@@ -300,7 +311,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
 
               // ヒットなしメッセージ
-              if (hasQuery && _filteredDetailIndices.isEmpty)
+        if ((hasActiveFilter && _activeFilterIndices.isEmpty) ||
+          (hasQuery && _filteredDetailIndices.isEmpty))
                 Center(
                   child: Container(
                     padding: const EdgeInsets.all(12),
@@ -369,12 +381,18 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                           ),
                           textInputAction: TextInputAction.search,
                           onChanged: _onSearchChanged,
-                          onSubmitted: (_) => _applySearch(),
+                          onSubmitted: (_) => _commitSearch(),
                         ),
                       ),
                     )
                   : const Text('Pixiv Viewer'),
               actions: [
+                if (_isFilterActive && !_isSearchMode)
+                  IconButton(
+                    icon: const Icon(Icons.filter_alt_off),
+                    tooltip: '検索結果をクリア',
+                    onPressed: _clearCommittedFilter,
+                  ),
         if (_isSearchMode)
                   IconButton(
           icon: const Icon(Icons.clear),
@@ -444,7 +462,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     // 空なら全解除
     if (raw.isEmpty) {
       setState(() {
-        _filteredDetailIndices = [];
+  _filteredDetailIndices = [];
       });
       return;
     }
@@ -462,6 +480,29 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     }
     setState(() {
       _filteredDetailIndices = indices;
+    });
+  }
+
+  Future<void> _commitSearch() async {
+    final raw = _searchController.text.trim();
+    if (raw.isEmpty) {
+      _clearCommittedFilter();
+      _exitSearchMode();
+      return;
+    }
+    // まず現在の結果を確定するために検索を実行
+    await _applySearch();
+    setState(() {
+      _isFilterActive = true;
+      _activeFilterIndices = List<int>.from(_filteredDetailIndices);
+    });
+    _exitSearchMode();
+  }
+
+  void _clearCommittedFilter() {
+    setState(() {
+      _isFilterActive = false;
+      _activeFilterIndices = [];
     });
   }
 
@@ -588,6 +629,21 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     if (hasQuery) {
       // 非同期だが結果は setState 内で反映
       _applySearch();
+    }
+    // コミット済みフィルタがある場合はパスで再マッピング
+    if (_isFilterActive && _activeFilterIndices.isNotEmpty) {
+      final prevPaths = _activeFilterIndices
+          .map((i) => _imageFilesForDetail[i].path)
+          .toSet();
+      final remapped = <int>[];
+      for (var i = 0; i < _imageFilesForDetail.length; i++) {
+        if (prevPaths.contains(_imageFilesForDetail[i].path)) {
+          remapped.add(i);
+        }
+      }
+      setState(() {
+        _activeFilterIndices = remapped;
+      });
     }
 
     // しおりをリセット
