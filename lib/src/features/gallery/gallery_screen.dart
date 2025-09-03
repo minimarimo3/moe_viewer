@@ -287,43 +287,43 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       }
     }
 
-    return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
-        child: SizeTransition(
-          sizeFactor: _appBarAnimationController,
-          child: AppBar(
-            title: const Text('Pixiv Viewer'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.shuffle),
-                tooltip: '表示順をシャッフル',
-                onPressed: () {
-                  _showShuffleConfirmationDialog();
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const SettingsScreen(),
-                    ),
-                  );
-                  _loadImages();
-                },
-              ),
-            ],
+    return GalleryPieMenuWidget(
+      key: _pieMenuKey,
+      onMenuRequest: (item, globalPosition) {
+        // _handleLongPressから直接GlobalKey経由で呼び出すため、ここは空でOK
+      },
+      child: Scaffold(
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(kToolbarHeight),
+          child: SizeTransition(
+            sizeFactor: _appBarAnimationController,
+            child: AppBar(
+              title: const Text('Pixiv Viewer'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.shuffle),
+                  tooltip: '表示順をシャッフル',
+                  onPressed: () {
+                    _showShuffleConfirmationDialog();
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SettingsScreen(),
+                      ),
+                    );
+                    _loadImages();
+                  },
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-      body: GalleryPieMenuWidget(
-        key: _pieMenuKey,
-        onMenuRequest: (item, globalPosition) {
-          // この処理はGalleryPieMenuWidget内で自動的に行われるため、空でOK
-        },
-        child: Center(child: buildBody()),
+        body: Center(child: buildBody()),
       ),
     );
   }
