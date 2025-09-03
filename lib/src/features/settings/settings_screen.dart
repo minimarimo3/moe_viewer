@@ -542,10 +542,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             4,
                                           ),
                                           child: Image.memory(
-                                            base64Decode(
-                                              settings
-                                                  .currentAnalyzedImageBase64!,
-                                            ),
+                                            (() {
+                                              final s = settings.currentAnalyzedImageBase64!;
+                                              final comma = s.indexOf(',');
+                                              final payload = (s.startsWith('data:') && comma != -1)
+                                                  ? s.substring(comma + 1)
+                                                  : s;
+                                              return base64Decode(payload);
+                                            })(),
                                             fit: BoxFit.cover,
                                             gaplessPlayback:
                                                 true, // 画像が更新されてもちらつかないように

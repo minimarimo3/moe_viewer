@@ -182,9 +182,6 @@ class TfliteModelRunner implements ModelRunner {
 /// NHWC, RGB, ImageNet 正規化の TFLite ランナー
 /// - 入力 dtype: float32 or float16（自動検出）
 /// - 出力 dtype: float32 を最優先、なければ float16 を使用（int 系は無視）
-
-
-
 class TfliteNhwcModelRunner implements ModelRunner {
   late Interpreter _interpreter;
   late int _inputSize;
@@ -452,8 +449,7 @@ class TfliteNhwcModelRunner implements ModelRunner {
 
     return {
       'tags': tags.isEmpty ? ['タグが見つかりませんでした'] : tags,
-      // 'image': imgBundle.base64Image,
-      'image': "AAAA",
+  'image': imgBundle.base64Image,
     };
   }
 
