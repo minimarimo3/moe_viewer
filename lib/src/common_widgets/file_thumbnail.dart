@@ -49,8 +49,7 @@ class _FileThumbnailState extends State<FileThumbnail> {
     // 以前はここで一旦nullにしていたが、ちらつきの原因になるのでやめる
 
     final tempDir = await getTemporaryDirectory();
-    // TODO: 多分だけどここで全てのサムネを生成してる？これは容量の爆増を招くので修正すべき
-    //  もしアルバム内のファイルならサムネの生成は無効でいいはず。(元々してないかもしれないけど)
+    // アルバム（写真まとめ）とアルバム（OSの方）でやってる
     // final cacheFileName = 'thumb_${widget.imageFile.path.hashCode}.jpg';
     final h = widget.height?.toString() ?? 'auto';
     final cacheFileName =

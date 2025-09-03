@@ -1,6 +1,8 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
+    // id("org.tensorflow.tensorflow-lite")
+    // id("org.tensorflow.tensorflow-lite-select-tf-ops")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -37,14 +39,15 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+    dependencies {
+        implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.11.0")
+    }
 }
 
 dependencies {
-    // ... 他の implementation("...") などが並んでいるはずです ...
-
-    // ★★★ この一行を追加 ★★★
     implementation("org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.0")
-    implementation("org.tensorflow:tensorflow-lite:2.9.0") // 念のためこちらも追加
+    implementation("org.tensorflow:tensorflow-lite:2.11.0")
+    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.11.0")
 }
 
 flutter {

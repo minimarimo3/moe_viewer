@@ -70,44 +70,58 @@ final List<AiModelDefinition> availableModels = [
         "ab0aaf253e3d546090001bec9bebc776c354ab6800f442ab9167af87b4a953ac",
     modelDownloadUrl:
         "https://github.com/minimarimo3/moe_viewer/releases/download/v0.0.0/camie-tagger-v2.onnx",
-    labelFileName: "camie-tagger_labels.csv",
+    labelFileName: "camie-tagger-v2-metadata.json",
     labelFileHash:
         "de9f962eb0fd86b7e30d0af4e8c7990205200d70e955d8ecae60f87d14eae66b",
     labelDownloadUrl:
         "https://github.com/minimarimo3/moe_viewer/releases/download/v0.0.0/camie-tagger-v2-metadata.json",
     displaySize: "750MB",
-    inputType: "int8",
+    inputType: "float32",
+    inputSize: 512,
   ),
   const AiModelDefinition(
     id: "camie-tagger-v2_float32",
     displayName: "camie-tagger-v2_float32",
     modelFileName: "camie-tagger-v2_float32.onnx",
-    modelFileHash:
-        "3a6a3a3929035c8a9a8d11b7257f1a64",
+    modelFileHash: "3a6a3a3929035c8a9a8d11b7257f1a64",
     modelDownloadUrl:
-        "https://github.com/minimarimo3/moe_viewer/releases/download/v0.0.0/camie-tagger-v2_float32.tflite",
-    labelFileName: "camie-tagger_labels.csv",
-    labelFileHash:
-        "fa3b5bae245de0316a9f910534230291",
+        "https://github.com/minimarimo3/moe_viewer/releases/download/v0.0.0/camie-tagger-v2_float32.onnx",
+    labelFileName: "camie-tagger-v2-metadata.json",
+    labelFileHash: "fa3b5bae245de0316a9f910534230291",
     labelDownloadUrl:
         "https://github.com/minimarimo3/moe_viewer/releases/download/v0.0.0/camie-tagger-v2-metadata.json",
     displaySize: "750MB",
-    inputType: "int8",
+    inputType: "float32",
+    inputSize: 512,
   ),
-    const AiModelDefinition(
-    id: "camie-tagger-v2_float16",
-    displayName: "camie-tagger-v2_float16",
-    modelFileName: "camie-tagger-v2_float16.onnx",
-    modelFileHash:
-      "98b3f0be9607a04e5186b068b37a0822",
+  const AiModelDefinition(
+    id: "camie-tagger-v2_float16_tflite",
+    displayName: "camie-tagger-v2_float16(tflite)",
+    modelFileName: "camie-tagger-v2_float16.tflite",
+    modelFileHash: "65955bf397f4b227835a60bbbb0868bc",
     modelDownloadUrl:
         "https://github.com/minimarimo3/moe_viewer/releases/download/v0.0.0/camie-tagger-v2_float16.tflite",
-    labelFileName: "camie-tagger_labels.csv",
-    labelFileHash:
-        "fa3b5bae245de0316a9f910534230291",
+    labelFileName: "camie-tagger-v2-metadata.json",
+    labelFileHash: "fa3b5bae245de0316a9f910534230291",
     labelDownloadUrl:
         "https://github.com/minimarimo3/moe_viewer/releases/download/v0.0.0/camie-tagger-v2-metadata.json",
     displaySize: "750MB",
-    inputType: "int8",
+    inputType: "float16",
+    inputSize: 512,
+  ),
+  const AiModelDefinition(
+    id: "camie-tagger-v2_simplified_float16_tflite",
+    displayName: "camie-tagger-v2_simplified_float16(tflite)",
+    modelFileName: "camie-tagger-v2_simplified_float16.tflite",
+    modelFileHash: "f80080d4403805cb896b22b649b52edd",
+    modelDownloadUrl:
+        "https://github.com/minimarimo3/moe_viewer/releases/download/v0.0.0/camie-tagger-v2_simplified_float16.tflite",
+    labelFileName: "camie-tagger-v2-metadata.json",
+    labelFileHash: "fa3b5bae245de0316a9f910534230291",
+    labelDownloadUrl:
+        "https://github.com/minimarimo3/moe_viewer/releases/download/v0.0.0/camie-tagger-v2-metadata.json",
+    displaySize: "380MB",
+    inputType: "float16",
+    inputSize: 512,
   ),
 ];
