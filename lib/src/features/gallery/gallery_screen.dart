@@ -400,7 +400,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                   ),
                 if (_isSearchMode)
                   IconButton(
-                    icon: const Icon(Icons.clear),
+                    icon: const Icon(Icons.backspace),
                     tooltip: '入力クリア',
                     onPressed: () {
                       _searchController.clear();
