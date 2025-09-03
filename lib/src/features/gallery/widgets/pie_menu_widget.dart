@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:pie_menu/pie_menu.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -37,7 +38,7 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
   }
 
   void openMenuForItem(dynamic item, [Offset? globalPosition]) async {
-    print(
+    log(
       '--- openMenuForItem called with item: $item at position: $globalPosition ---',
     );
 
@@ -58,7 +59,7 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
     final id = PixivUtils.extractPixivId(path);
     if (!mounted) return;
 
-    print('Resolved path: $path, pixivId: $id');
+    log('Resolved path: $path, pixivId: $id');
 
     setState(() {
       _currentTargetPath = path;
@@ -69,17 +70,17 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
     final capturedGlobal = globalPosition;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      print('Opening pie menu...');
+      log('Opening pie menu...');
       if (capturedGlobal != null && _canvasKey.currentContext != null) {
         final box = _canvasKey.currentContext!.findRenderObject() as RenderBox?;
         if (box != null) {
           final localPosition = box.globalToLocal(capturedGlobal);
-          print('Opening at local position: $localPosition');
+          log('Opening at local position: $localPosition');
           _pieController.openMenu(menuDisplacement: localPosition);
           return;
         }
       }
-      print('Opening at center');
+      log('Opening at center');
       _pieController.openMenu();
     });
   }
