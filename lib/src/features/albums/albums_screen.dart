@@ -10,6 +10,7 @@ import '../../core/providers/settings_provider.dart';
 import 'package:provider/provider.dart';
 import '../detail/detail_screen.dart';
 import '../../common_widgets/file_thumbnail.dart';
+import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 
 class AlbumsScreen extends StatefulWidget {
   const AlbumsScreen({super.key});
@@ -136,6 +137,8 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                         (snapshot.data != null && snapshot.data!.isNotEmpty)
                         ? snapshot.data!.first
                         : null;
+                    final dpr = MediaQuery.of(context).devicePixelRatio;
+                    final coverPx = (56 * dpr).round();
                     return ListTile(
                       leading: SizedBox(
                         width: 56,
@@ -143,10 +146,13 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                         child: cover != null
                             ? ClipRRect(
                                 borderRadius: BorderRadius.circular(6),
-                                child: FileThumbnail(
-                                  imageFile: cover,
-                                  width: 56,
-                                  height: 56,
+                                child: FittedBox(
+                                  fit: BoxFit.cover,
+                                  clipBehavior: Clip.hardEdge,
+                                  child: FileThumbnail(
+                                    imageFile: cover,
+                                    width: coverPx,
+                                  ),
                                 ),
                               )
                             : const Icon(Icons.photo_album_outlined, size: 40),
@@ -264,7 +270,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   bool _selectMode = false;
   final Set<String> _selectedPaths = {};
   String _sortMode = 'added_desc';
-  bool get _manualMode => _sortMode == 'manual';
+  bool _reorderUIActive = false; // 並び替えUIを表示するか（ソートモードとは独立）
+  bool _reorderDirty = false; // 並び替え変更が未保存かどうか
 
   @override
   void initState() {
@@ -313,7 +320,13 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
               } else if (v == 'sort') {
                 final selected = await _pickSortMode(context);
                 if (selected != null) {
-                  setState(() => _sortMode = selected);
+                  setState(() {
+                    _sortMode = selected;
+                    _reorderUIActive = selected == 'manual';
+                    if (_reorderUIActive) {
+                      _reorderDirty = false; // 手動モード開始時は未編集
+                    }
+                  });
                   await AlbumsService.instance.setAlbumSortMode(
                     widget.album.id,
                     selected,
@@ -333,8 +346,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _files.isEmpty
           ? const Center(child: Text('このアルバムにはまだ画像がありません'))
-          : (_manualMode
-                ? _buildManualList()
+          : (_reorderUIActive
+                ? _buildManualGrid(crossAxisCount)
                 : GalleryPieMenuWidget(
                     key: _pieMenuKey,
                     albumId: widget.album.id,
@@ -345,7 +358,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       crossAxisCount: crossAxisCount,
                       autoScrollController: _autoController,
                       onLongPress: (item, pos) {
-                        if (_selectMode) return;
+                        if (_selectMode || _reorderUIActive) return;
                         _pieMenuKey.currentState?.openMenuForItem(item, pos);
                       },
                       onItemTap: (index, item) {
@@ -373,15 +386,51 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       },
                     ),
                   )),
-      floatingActionButton: _files.isEmpty
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () {
-                setState(() => _selectMode = !_selectMode);
+      floatingActionButton: _reorderUIActive
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                if (!_reorderDirty) {
+                  setState(() {
+                    _reorderUIActive = false; // 変更なしならそのまま終了
+                  });
+                  return;
+                }
+                final paths = _files.map((f) => f.path).toList();
+                try {
+                  await AlbumsService.instance.updateManualOrder(
+                    widget.album.id,
+                    paths,
+                  );
+                  if (!mounted) return;
+                  setState(() {
+                    _reorderUIActive = false;
+                    _reorderDirty = false;
+                  });
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('並び順を保存しました')));
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('保存に失敗しました')));
+                }
               },
-              icon: Icon(_selectMode ? Icons.close : Icons.select_all),
-              label: Text(_selectMode ? '選択解除' : '複数選択'),
-            ),
+              icon: const Icon(Icons.check),
+              label: const Text('完了'),
+            )
+          : (_sortMode == 'manual'
+                ? FloatingActionButton.extended(
+                    onPressed: () {
+                      setState(() {
+                        _reorderUIActive = true;
+                        _reorderDirty = false;
+                      });
+                    },
+                    icon: const Icon(Icons.swap_vert),
+                    label: const Text('並び替える'),
+                  )
+                : null),
     );
   }
 
@@ -417,37 +466,51 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     );
   }
 
-  Widget _buildManualList() {
-    return ReorderableListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      onReorder: (oldIndex, newIndex) async {
-        setState(() {
-          if (newIndex > oldIndex) newIndex -= 1;
-          final item = _files.removeAt(oldIndex);
-          _files.insert(newIndex, item);
-        });
-        await AlbumsService.instance.updateManualOrder(
-          widget.album.id,
-          _files.map((f) => f.path).toList(),
-        );
-      },
-      itemCount: _files.length,
-      itemBuilder: (context, index) {
-        final f = _files[index];
-        return ListTile(
-          key: ValueKey(f.path),
-          leading: ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: FileThumbnail(imageFile: f, width: 56, height: 56),
+  Widget _buildManualGrid(int crossAxisCount) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final thumbnailSize =
+        (screenWidth / crossAxisCount * MediaQuery.of(context).devicePixelRatio)
+            .round();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            '手動並び替え中：ドラッグで順番を変更できます',
+            style: TextStyle(fontSize: 13, color: Colors.grey),
           ),
-          title: Text(
-            f.path.split(Platform.pathSeparator).last,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+        ),
+        Expanded(
+          child: ReorderableGridView.count(
+            crossAxisCount: crossAxisCount,
+            mainAxisSpacing: 2,
+            crossAxisSpacing: 2,
+            dragWidgetBuilder: (index, child) => child,
+            onReorder: (oldIndex, newIndex) {
+              setState(() {
+                final item = _files.removeAt(oldIndex);
+                _files.insert(newIndex, item);
+                _reorderDirty = true; // 変更フラグを立てる
+              });
+            },
+            children: [
+              for (var i = 0; i < _files.length; i++)
+                ClipRRect(
+                  key: ValueKey(_files[i].path),
+                  borderRadius: BorderRadius.circular(6),
+                  child: RepaintBoundary(
+                    child: FileThumbnail(
+                      key: ValueKey('${_files[i].path}_$thumbnailSize'),
+                      imageFile: _files[i],
+                      width: thumbnailSize,
+                    ),
+                  ),
+                ),
+            ],
           ),
-          trailing: const Icon(Icons.drag_handle),
-        );
-      },
+        ),
+      ],
     );
   }
 }
