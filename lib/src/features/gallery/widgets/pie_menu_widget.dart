@@ -12,12 +12,15 @@ class GalleryPieMenuWidget extends StatefulWidget {
   final Widget child;
   final Function(dynamic item, Offset? globalPosition)? onMenuRequest;
   final int? albumId; // アルバム詳細画面で使用（そのアルバムからの削除）
+  // アルバムから削除後に親画面を更新するコールバック
+  final Future<void> Function()? onRemove;
 
   const GalleryPieMenuWidget({
     super.key,
     required this.child,
     this.onMenuRequest,
     this.albumId,
+    this.onRemove,
   });
 
   @override
@@ -164,11 +167,34 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
                     final path = _currentTargetPath;
                     final aid = widget.albumId;
                     if (path == null || aid == null) return;
+                    // 確認ダイアログ
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text('アルバムから削除'),
+                        content: const Text('この画像をアルバムから削除しますか？'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('キャンセル'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('削除'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed != true) return;
                     await AlbumsService.instance.removePath(aid, path);
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('アルバムから削除しました')),
                     );
+                    // 親画面を更新
+                    if (widget.onRemove != null) {
+                      await widget.onRemove!();
+                    }
                   },
                   child: const Icon(Icons.remove_circle_outline),
                 ),

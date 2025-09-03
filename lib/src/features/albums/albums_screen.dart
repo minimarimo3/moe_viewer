@@ -351,6 +351,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                 : GalleryPieMenuWidget(
                     key: _pieMenuKey,
                     albumId: widget.album.id,
+                    // アルバムから削除後に一覧を更新
+                    onRemove: _load,
                     onMenuRequest: (item, pos) {},
                     child: GalleryGridWidget(
                       displayItems: _files,
