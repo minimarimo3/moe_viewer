@@ -17,7 +17,7 @@ class DatabaseHelper {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onConfigure: (db) async {
         // 外部キー制約を有効化
@@ -41,7 +41,8 @@ class DatabaseHelper {
       CREATE TABLE albums (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        sort_mode TEXT NOT NULL DEFAULT 'added_desc' -- added_desc/added_asc/name_asc/name_desc/updated_desc
       )
     ''');
 
@@ -50,6 +51,7 @@ class DatabaseHelper {
         album_id INTEGER NOT NULL,
         path TEXT NOT NULL,
         added_at INTEGER NOT NULL,
+  position INTEGER NOT NULL,
         PRIMARY KEY (album_id, path),
         FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE
       )
@@ -62,7 +64,8 @@ class DatabaseHelper {
         CREATE TABLE IF NOT EXISTS albums (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
-          created_at INTEGER NOT NULL
+          created_at INTEGER NOT NULL,
+          sort_mode TEXT NOT NULL DEFAULT 'added_desc'
         )
       ''');
       await db.execute('''
@@ -70,10 +73,23 @@ class DatabaseHelper {
           album_id INTEGER NOT NULL,
           path TEXT NOT NULL,
           added_at INTEGER NOT NULL,
+          position INTEGER NOT NULL,
           PRIMARY KEY (album_id, path),
           FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE
         )
       ''');
+    }
+    if (oldVersion < 3) {
+      // v3: album_items に position 列を追加し、既存行を初期化
+      try {
+        await db.execute('ALTER TABLE album_items ADD COLUMN position INTEGER');
+      } catch (_) {
+        // 既に存在する場合は無視
+      }
+      // 既存のNULL positionに、追加日時の逆順に近い順序を与える（新しいものが先頭になるよう負値を設定）
+      await db.execute(
+        'UPDATE album_items SET position = -added_at WHERE position IS NULL',
+      );
     }
   }
 
@@ -216,7 +232,22 @@ class DatabaseHelper {
 
   Future<void> renameAlbum(int albumId, String newName) async {
     final db = await instance.database;
-    await db.update('albums', {'name': newName}, where: 'id = ?', whereArgs: [albumId]);
+    await db.update(
+      'albums',
+      {'name': newName},
+      where: 'id = ?',
+      whereArgs: [albumId],
+    );
+  }
+
+  Future<void> updateAlbumSortMode(int albumId, String sortMode) async {
+    final db = await instance.database;
+    await db.update(
+      'albums',
+      {'sort_mode': sortMode},
+      where: 'id = ?',
+      whereArgs: [albumId],
+    );
   }
 
   Future<void> deleteAlbum(int albumId) async {
@@ -227,27 +258,29 @@ class DatabaseHelper {
 
   Future<void> addImageToAlbum(int albumId, String path) async {
     final db = await instance.database;
-    await db.insert(
-      'album_items',
-      {
-        'album_id': albumId,
-        'path': path,
-        'added_at': DateTime.now().millisecondsSinceEpoch,
-      },
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
+    final next = await _getNextPosition(db, albumId) + 1;
+    await db.insert('album_items', {
+      'album_id': albumId,
+      'path': path,
+      'added_at': DateTime.now().millisecondsSinceEpoch,
+      'position': next,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   Future<void> addImagesToAlbum(int albumId, List<String> paths) async {
     final db = await instance.database;
-    final batch = db.batch();
     final now = DateTime.now().millisecondsSinceEpoch;
+    final next = await _getNextPosition(db, albumId);
+    var pos = next;
+    final batch = db.batch();
     for (final p in paths) {
-      batch.insert(
-        'album_items',
-        {'album_id': albumId, 'path': p, 'added_at': now},
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
+      pos += 1;
+      batch.insert('album_items', {
+        'album_id': albumId,
+        'path': p,
+        'added_at': now,
+        'position': pos,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
     await batch.commit(noResult: true);
   }
@@ -261,15 +294,45 @@ class DatabaseHelper {
     );
   }
 
-  Future<List<String>> getAlbumImagePaths(int albumId) async {
+  Future<List<Map<String, dynamic>>> getAlbumItemsRaw(int albumId) async {
     final db = await instance.database;
     final rows = await db.query(
       'album_items',
-      columns: ['path'],
+      columns: ['path', 'added_at', 'position'],
       where: 'album_id = ?',
       whereArgs: [albumId],
-      orderBy: 'added_at DESC',
+      // 手動順序が優先。positionが同値/未設定の場合のフォールバックとしてadded_atを使用
+      orderBy: 'position ASC, added_at DESC',
     );
-    return rows.map((r) => r['path'] as String).toList();
+    return rows;
+  }
+
+  Future<int> _getNextPosition(Database db, int albumId) async {
+    final res = await db.rawQuery(
+      'SELECT MAX(position) as maxpos FROM album_items WHERE album_id = ?',
+      [albumId],
+    );
+    final v = res.first['maxpos'];
+    if (v == null) return 0;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return 0;
+  }
+
+  Future<void> updateAlbumPositions(
+    int albumId,
+    List<String> orderedPaths,
+  ) async {
+    final db = await instance.database;
+    final batch = db.batch();
+    for (var i = 0; i < orderedPaths.length; i++) {
+      batch.update(
+        'album_items',
+        {'position': i + 1},
+        where: 'album_id = ? AND path = ?',
+        whereArgs: [albumId, orderedPaths[i]],
+      );
+    }
+    await batch.commit(noResult: true);
   }
 }

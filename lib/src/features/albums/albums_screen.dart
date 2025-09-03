@@ -6,6 +6,10 @@ import '../../core/services/albums_service.dart';
 import '../gallery/widgets/gallery_grid_widget.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import '../gallery/widgets/pie_menu_widget.dart';
+import '../../core/providers/settings_provider.dart';
+import 'package:provider/provider.dart';
+import '../detail/detail_screen.dart';
+import '../../common_widgets/file_thumbnail.dart';
 
 class AlbumsScreen extends StatefulWidget {
   const AlbumsScreen({super.key});
@@ -22,6 +26,40 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  Future<String?> _pickSortMode(
+    BuildContext context, {
+    String initial = 'added_desc',
+  }) async {
+    const modes = {
+      'added_desc': '追加が新しい順',
+      'added_asc': '追加が古い順',
+      'name_asc': '名前(昇順)',
+      'name_desc': '名前(降順)',
+      'manual': '手動（ドラッグで並び替え）',
+    };
+    return showDialog<String>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setState) {
+          var selected = initial;
+          return SimpleDialog(
+            title: const Text('並び替え'),
+            children: modes.entries
+                .map(
+                  (e) => RadioListTile<String>(
+                    value: e.key,
+                    groupValue: selected,
+                    onChanged: (v) => Navigator.pop(context, v),
+                    title: Text(e.value),
+                  ),
+                )
+                .toList(),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _load() async {
@@ -83,13 +121,36 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _albums.isEmpty
-              ? const Center(child: Text('アルバムがありません。右上から作成できます。'))
-              : ListView.builder(
-                  itemCount: _albums.length,
-                  itemBuilder: (context, index) {
-                    final a = _albums[index];
+          ? const Center(child: Text('アルバムがありません。右上から作成できます。'))
+          : ListView.builder(
+              itemCount: _albums.length,
+              itemBuilder: (context, index) {
+                final a = _albums[index];
+                return FutureBuilder<List<File>>(
+                  future: AlbumsService.instance.getAlbumFiles(
+                    a.id,
+                    sortMode: a.sortMode,
+                  ),
+                  builder: (context, snapshot) {
+                    final cover =
+                        (snapshot.data != null && snapshot.data!.isNotEmpty)
+                        ? snapshot.data!.first
+                        : null;
                     return ListTile(
-                      leading: const Icon(Icons.photo_album_outlined),
+                      leading: SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: cover != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: FileThumbnail(
+                                  imageFile: cover,
+                                  width: 56,
+                                  height: 56,
+                                ),
+                              )
+                            : const Icon(Icons.photo_album_outlined, size: 40),
+                      ),
                       title: Text(a.name),
                       subtitle: Text(
                         '作成日: ${a.createdAt.toLocal().toString().split(".").first}',
@@ -128,8 +189,22 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                               ),
                             );
                             if (newName != null && newName.isNotEmpty) {
-                              await AlbumsService.instance
-                                  .renameAlbum(a.id, newName);
+                              await AlbumsService.instance.renameAlbum(
+                                a.id,
+                                newName,
+                              );
+                              await _load();
+                            }
+                          } else if (value == 'sort') {
+                            final selected = await _pickSortMode(
+                              context,
+                              initial: a.sortMode,
+                            );
+                            if (selected != null) {
+                              await AlbumsService.instance.setAlbumSortMode(
+                                a.id,
+                                selected,
+                              );
                               await _load();
                             }
                           } else if (value == 'delete') {
@@ -144,7 +219,8 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                                     child: const Text('キャンセル'),
                                   ),
                                   TextButton(
-                                    onPressed: () => Navigator.pop(context, true),
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
                                     child: const Text('削除'),
                                   ),
                                 ],
@@ -158,12 +234,15 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                         },
                         itemBuilder: (context) => const [
                           PopupMenuItem(value: 'rename', child: Text('名前変更')),
+                          PopupMenuItem(value: 'sort', child: Text('並び替え')),
                           PopupMenuItem(value: 'delete', child: Text('削除')),
                         ],
                       ),
                     );
                   },
-                ),
+                );
+              },
+            ),
     );
   }
 }
@@ -182,16 +261,24 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   late AutoScrollController _autoController;
   final GlobalKey<GalleryPieMenuWidgetState> _pieMenuKey =
       GlobalKey<GalleryPieMenuWidgetState>();
+  bool _selectMode = false;
+  final Set<String> _selectedPaths = {};
+  String _sortMode = 'added_desc';
+  bool get _manualMode => _sortMode == 'manual';
 
   @override
   void initState() {
     super.initState();
-  _autoController = AutoScrollController();
+    _autoController = AutoScrollController();
+    _sortMode = widget.album.sortMode;
     _load();
   }
 
   Future<void> _load() async {
-    final files = await AlbumsService.instance.getAlbumFiles(widget.album.id);
+    final files = await AlbumsService.instance.getAlbumFiles(
+      widget.album.id,
+      sortMode: _sortMode,
+    );
     if (!mounted) return;
     setState(() {
       _files = files;
@@ -201,23 +288,43 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final crossAxisCount = Provider.of<SettingsProvider>(
+      context,
+    ).gridCrossAxisCount;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.album.name),
         actions: [
+          if (_selectMode)
+            IconButton(
+              tooltip: '選択解除',
+              onPressed: () => setState(() {
+                _selectedPaths.clear();
+                _selectMode = false;
+              }),
+              icon: const Icon(Icons.close),
+            ),
           PopupMenuButton<String>(
             onSelected: (v) async {
               if (v == 'export') {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('エクスポート機能は後で実装します')),
                 );
+              } else if (v == 'sort') {
+                final selected = await _pickSortMode(context);
+                if (selected != null) {
+                  setState(() => _sortMode = selected);
+                  await AlbumsService.instance.setAlbumSortMode(
+                    widget.album.id,
+                    selected,
+                  );
+                  await _load();
+                }
               }
             },
             itemBuilder: (_) => const [
-              PopupMenuItem(
-                value: 'export',
-                child: Text('ZIPでエクスポート（準備中）'),
-              ),
+              PopupMenuItem(value: 'export', child: Text('ZIPでエクスポート（準備中）')),
+              PopupMenuItem(value: 'sort', child: Text('並び替え')),
             ],
           ),
         ],
@@ -225,20 +332,56 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _files.isEmpty
-              ? const Center(child: Text('このアルバムにはまだ画像がありません'))
-              : GalleryPieMenuWidget(
-                  key: _pieMenuKey,
-                  onMenuRequest: (item, pos) {},
-                  child: GalleryGridWidget(
-                    displayItems: _files,
-                    imageFilesForDetail: _files,
-                    crossAxisCount: 3,
-                    autoScrollController: _autoController,
-                    onLongPress: (item, pos) {
-                      _pieMenuKey.currentState?.openMenuForItem(item, pos);
-                    },
-                  ),
-                ),
+          ? const Center(child: Text('このアルバムにはまだ画像がありません'))
+          : (_manualMode
+                ? _buildManualList()
+                : GalleryPieMenuWidget(
+                    key: _pieMenuKey,
+                    albumId: widget.album.id,
+                    onMenuRequest: (item, pos) {},
+                    child: GalleryGridWidget(
+                      displayItems: _files,
+                      imageFilesForDetail: _files,
+                      crossAxisCount: crossAxisCount,
+                      autoScrollController: _autoController,
+                      onLongPress: (item, pos) {
+                        if (_selectMode) return;
+                        _pieMenuKey.currentState?.openMenuForItem(item, pos);
+                      },
+                      onItemTap: (index, item) {
+                        if (_selectMode) {
+                          final p = _files[index].path;
+                          setState(() {
+                            if (_selectedPaths.contains(p)) {
+                              _selectedPaths.remove(p);
+                            } else {
+                              _selectedPaths.add(p);
+                            }
+                          });
+                        } else {
+                          // 通常遷移（詳細画面）
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => DetailScreen(
+                                imageFileList: _files,
+                                initialIndex: index,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  )),
+      floatingActionButton: _files.isEmpty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () {
+                setState(() => _selectMode = !_selectMode);
+              },
+              icon: Icon(_selectMode ? Icons.close : Icons.select_all),
+              label: Text(_selectMode ? '選択解除' : '複数選択'),
+            ),
     );
   }
 
@@ -246,5 +389,65 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   void dispose() {
     _autoController.dispose();
     super.dispose();
+  }
+
+  Future<String?> _pickSortMode(BuildContext context) async {
+    const modes = {
+      'added_desc': '追加が新しい順',
+      'added_asc': '追加が古い順',
+      'name_asc': '名前(昇順)',
+      'name_desc': '名前(降順)',
+      'manual': '手動（ドラッグで並び替え）',
+    };
+    return showDialog<String>(
+      context: context,
+      builder: (_) => SimpleDialog(
+        title: const Text('並び替え'),
+        children: modes.entries
+            .map(
+              (e) => RadioListTile<String>(
+                value: e.key,
+                groupValue: _sortMode,
+                onChanged: (v) => Navigator.pop(context, v),
+                title: Text(e.value),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _buildManualList() {
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      onReorder: (oldIndex, newIndex) async {
+        setState(() {
+          if (newIndex > oldIndex) newIndex -= 1;
+          final item = _files.removeAt(oldIndex);
+          _files.insert(newIndex, item);
+        });
+        await AlbumsService.instance.updateManualOrder(
+          widget.album.id,
+          _files.map((f) => f.path).toList(),
+        );
+      },
+      itemCount: _files.length,
+      itemBuilder: (context, index) {
+        final f = _files[index];
+        return ListTile(
+          key: ValueKey(f.path),
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: FileThumbnail(imageFile: f, width: 56, height: 56),
+          ),
+          title: Text(
+            f.path.split(Platform.pathSeparator).last,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: const Icon(Icons.drag_handle),
+        );
+      },
+    );
   }
 }

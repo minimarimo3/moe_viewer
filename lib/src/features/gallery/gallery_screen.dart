@@ -402,9 +402,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                     if (!mounted) return;
                     await Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => const AlbumsScreen(),
-                      ),
+                      MaterialPageRoute(builder: (_) => const AlbumsScreen()),
                     );
                   },
                 ),
@@ -421,13 +419,13 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                           .toList();
                       final albumId = await _pickAlbumDialog(context);
                       if (albumId == null) return;
-                      await DatabaseHelper.instance
-                          .addImagesToAlbum(albumId, paths);
+                      await DatabaseHelper.instance.addImagesToAlbum(
+                        albumId,
+                        paths,
+                      );
                       if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('${paths.length}件をアルバムに追加しました'),
-                        ),
+                        SnackBar(content: Text('${paths.length}件をアルバムに追加しました')),
                       );
                     },
                   ),
@@ -777,9 +775,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                 const Divider(),
                 TextField(
                   controller: controller,
-                  decoration: const InputDecoration(
-                    labelText: '新しいアルバム名',
-                  ),
+                  decoration: const InputDecoration(labelText: '新しいアルバム名'),
                 ),
               ],
             ),

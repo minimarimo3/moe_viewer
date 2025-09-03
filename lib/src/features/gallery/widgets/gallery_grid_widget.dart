@@ -14,6 +14,7 @@ class GalleryGridWidget extends StatelessWidget {
   final AutoScrollController autoScrollController;
   final Function(dynamic item, Offset globalPosition) onLongPress;
   final VoidCallback? onEnterDetail;
+  final void Function(int index, dynamic item)? onItemTap;
 
   const GalleryGridWidget({
     super.key,
@@ -23,6 +24,7 @@ class GalleryGridWidget extends StatelessWidget {
     required this.autoScrollController,
     required this.onLongPress,
     this.onEnterDetail,
+    this.onItemTap,
   });
 
   @override
@@ -47,7 +49,7 @@ class GalleryGridWidget extends StatelessWidget {
         if (item is AssetEntity) {
           thumbnailWidget = RepaintBoundary(
             child: AssetThumbnail(
-              key: ValueKey(item.id),
+              key: ValueKey('${item.id}_$thumbnailSize'),
               asset: item,
               width: thumbnailSize,
             ),
@@ -55,7 +57,7 @@ class GalleryGridWidget extends StatelessWidget {
         } else if (item is File) {
           thumbnailWidget = RepaintBoundary(
             child: FileThumbnail(
-              key: ValueKey(item.path),
+              key: ValueKey('${item.path}_$thumbnailSize'),
               imageFile: item,
               width: thumbnailSize,
             ),
@@ -70,6 +72,10 @@ class GalleryGridWidget extends StatelessWidget {
           index: index,
           child: GestureDetector(
             onTap: () async {
+              if (onItemTap != null) {
+                onItemTap!(index, item);
+                return;
+              }
               onEnterDetail?.call();
               await Navigator.push(
                 context,

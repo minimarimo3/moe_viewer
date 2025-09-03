@@ -11,11 +11,13 @@ import '../../../core/services/albums_service.dart';
 class GalleryPieMenuWidget extends StatefulWidget {
   final Widget child;
   final Function(dynamic item, Offset? globalPosition)? onMenuRequest;
+  final int? albumId; // アルバム詳細画面で使用（そのアルバムからの削除）
 
   const GalleryPieMenuWidget({
     super.key,
     required this.child,
     this.onMenuRequest,
+    this.albumId,
   });
 
   @override
@@ -149,12 +151,27 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
                   if (albumId == null) return;
                   await AlbumsService.instance.addPaths(albumId, [path]);
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('アルバムに追加しました')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('アルバムに追加しました')));
                 },
                 child: const Icon(Icons.playlist_add),
               ),
+              if (widget.albumId != null)
+                PieAction(
+                  tooltip: const Text('このアルバムから削除'),
+                  onSelect: () async {
+                    final path = _currentTargetPath;
+                    final aid = widget.albumId;
+                    if (path == null || aid == null) return;
+                    await AlbumsService.instance.removePath(aid, path);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('アルバムから削除しました')),
+                    );
+                  },
+                  child: const Icon(Icons.remove_circle_outline),
+                ),
             ],
             child: const SizedBox.shrink(),
           ),
@@ -198,9 +215,7 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
                 const Divider(),
                 TextField(
                   controller: controller,
-                  decoration: const InputDecoration(
-                    labelText: '新しいアルバム名',
-                  ),
+                  decoration: const InputDecoration(labelText: '新しいアルバム名'),
                 ),
               ],
             ),
