@@ -22,7 +22,7 @@ class GalleryGridWidget extends StatelessWidget {
     required this.crossAxisCount,
     required this.autoScrollController,
     required this.onLongPress,
-  this.onEnterDetail,
+    this.onEnterDetail,
   });
 
   @override

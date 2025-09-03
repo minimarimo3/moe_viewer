@@ -22,7 +22,7 @@ class GalleryListWidget extends StatelessWidget {
     required this.itemPositionsListener,
     required this.onLongPress,
     required this.imageSizeFutureCache,
-  this.onEnterDetail,
+    this.onEnterDetail,
   });
 
   Future<Size> getImageSize(File imageFile) {

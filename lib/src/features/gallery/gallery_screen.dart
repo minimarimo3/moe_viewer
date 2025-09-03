@@ -75,6 +75,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   // 検索結果の固定（Enter確定）
   bool _isFilterActive = false;
   List<int> _activeFilterIndices = [];
+  String? _lastCommittedQuery;
 
   void _handleLongPress(dynamic item, Offset globalPosition) {
     // pie menu widget内でopenMenuForItemを呼び出すためのハンドラー
@@ -134,8 +135,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     _appBarAnimationController.dispose();
     _searchDebounce?.cancel();
     _searchController.dispose();
-  _removeSuggestionsOverlay();
-  ModalRoute.of(context)?.removeScopedWillPopCallback(_onWillPop);
+    _removeSuggestionsOverlay();
+    ModalRoute.of(context)?.removeScopedWillPopCallback(_onWillPop);
     super.dispose();
   }
 
@@ -180,8 +181,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       settings.folderSettings,
     );
 
-  // サジェスト用タグを先読み
-  _allTags = await _db.getAllTags();
+    // サジェスト用タグを先読み
+    _allTags = await _db.getAllTags();
 
     setState(() {
       _displayItems = imageList.displayItems;
@@ -228,7 +229,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
       // 有効な検索（Enter確定）や入力中の検索を反映
       final hasActiveFilter = _isFilterActive;
-      final hasQuery = _isSearchMode && _searchController.text.trim().isNotEmpty;
+      final hasQuery =
+          _isSearchMode && _searchController.text.trim().isNotEmpty;
       List<int> indices;
       if (hasActiveFilter) {
         indices = _activeFilterIndices;
@@ -243,8 +245,10 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       final effectiveDetailFiles = (hasActiveFilter || hasQuery)
           ? indices.map((i) => _imageFilesForDetail[i]).toList()
           : _imageFilesForDetail;
+      final showingEmpty =
+          (hasActiveFilter || hasQuery) && effectiveDisplayItems.isEmpty;
 
-  switch (_status) {
+      switch (_status) {
         case LoadingStatus.loading:
           return const CircularProgressIndicator();
         case LoadingStatus.empty:
@@ -309,10 +313,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                   onEnterDetail: () => _exitSearchMode(resetInput: false),
                 ),
 
-
               // ヒットなしメッセージ
-        if ((hasActiveFilter && _activeFilterIndices.isEmpty) ||
-          (hasQuery && _filteredDetailIndices.isEmpty))
+              if (showingEmpty)
                 Center(
                   child: Container(
                     padding: const EdgeInsets.all(12),
@@ -370,7 +372,10 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                   ? FocusScope(
                       child: Focus(
                         onFocusChange: (has) {
-                          if (!has) _exitSearchMode();
+                          if (!has) {
+                            // 検索以外をタップしたら現在の結果で確定
+                            _commitSearch();
+                          }
                         },
                         child: TextField(
                           controller: _searchController,
@@ -393,9 +398,9 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                     tooltip: '検索結果をクリア',
                     onPressed: _clearCommittedFilter,
                   ),
-        if (_isSearchMode)
+                if (_isSearchMode)
                   IconButton(
-          icon: const Icon(Icons.clear),
+                    icon: const Icon(Icons.clear),
                     tooltip: '入力クリア',
                     onPressed: () {
                       _searchController.clear();
@@ -411,6 +416,16 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                     } else {
                       setState(() {
                         _isSearchMode = true;
+                        // 検索結果画面から開いた場合は前回のクエリを復元
+                        if (_isFilterActive &&
+                            (_lastCommittedQuery?.isNotEmpty ?? false)) {
+                          _searchController.text = _lastCommittedQuery!;
+                          _searchController
+                              .selection = TextSelection.fromPosition(
+                            TextPosition(offset: _searchController.text.length),
+                          );
+                        }
+                        _updateSuggestions();
                         _showSuggestionsOverlay();
                       });
                     }
@@ -440,7 +455,16 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
             ),
           ),
         ),
-        body: Center(child: buildBody()),
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () {
+            if (_isSearchMode) {
+              FocusScope.of(context).unfocus();
+              _commitSearch();
+            }
+          },
+          child: Center(child: buildBody()),
+        ),
       ),
     );
   }
@@ -462,7 +486,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     // 空なら全解除
     if (raw.isEmpty) {
       setState(() {
-  _filteredDetailIndices = [];
+        _filteredDetailIndices = [];
       });
       return;
     }
@@ -495,6 +519,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     setState(() {
       _isFilterActive = true;
       _activeFilterIndices = List<int>.from(_filteredDetailIndices);
+      _lastCommittedQuery = raw;
     });
     _exitSearchMode();
   }
@@ -503,6 +528,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     setState(() {
       _isFilterActive = false;
       _activeFilterIndices = [];
+      _lastCommittedQuery = null;
     });
   }
 
@@ -510,7 +536,10 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   void _updateSuggestions() {
     final raw = _searchController.text;
     // 最後のトークンに対してサジェスト
-    final tokens = raw.split(RegExp(r"\s+")).where((e) => e.isNotEmpty).toList();
+    final tokens = raw
+        .split(RegExp(r"\s+"))
+        .where((e) => e.isNotEmpty)
+        .toList();
     final last = tokens.isEmpty ? '' : tokens.last.toLowerCase();
     if (last.isEmpty) {
       _suggestions = [];
@@ -545,7 +574,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   void _showSuggestionsOverlay() {
     _removeSuggestionsOverlay();
     if (!_isSearchMode || _suggestions.isEmpty) return;
-  final overlay = Overlay.of(context);
+    // Ensure we insert into the top-most overlay so it renders over grid/list
+    final overlay = Navigator.of(context, rootNavigator: true).overlay;
     final theme = Theme.of(context);
     _suggestionsOverlay = OverlayEntry(
       builder: (context) {
@@ -574,7 +604,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         );
       },
     );
-    overlay.insert(_suggestionsOverlay!);
+    overlay?.insert(_suggestionsOverlay!);
   }
 
   void _removeSuggestionsOverlay() {
@@ -585,8 +615,12 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   // --- 戻るキー/他画面遷移で検索を中断 ---
   Future<bool> _onWillPop() async {
     if (_isSearchMode) {
-      _exitSearchMode();
-      return false; // ここでpopを止める
+      await _commitSearch();
+      return false; // popは止める
+    }
+    if (_isFilterActive) {
+      _clearCommittedFilter();
+      return false; // popは止める（メインに戻す）
     }
     return true;
   }
