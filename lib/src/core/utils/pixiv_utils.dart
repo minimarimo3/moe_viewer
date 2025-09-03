@@ -1,20 +1,11 @@
 /// Pixiv関連のユーティリティ
 class PixivUtils {
-  /// ファイル名などからPixivのイラストIDを推定して抽出する。
-  /// 代表的な保存名の例:
-  /// - illust_12345678_p0.jpg
-  /// - illust_12345678_.png
-  /// - 12345678_p0.jpg
-  /// - pixiv_12345678.jpg
-  /// - title_12345678_some_text.jpg
+  /// ファイル名からPixivのイラストIDを推定して抽出する。
+  /// - illust_（イラストID）_（ダウンロードした日）_（ダウンロード時間）.jpg
   /// マッチした最初のパターンの数字を返す。該当なしはnull。
   static String? extractPixivId(String path) {
     final fileName = path.split('/').last;
-    final patterns = <RegExp>[
-      RegExp(r'illust_(\d+)[^\d]'), // illust_12345_
-      RegExp(r'(^|[^\d])(\d{7,12})_p\d+'), // 12345678_p0（先頭以外も）
-      RegExp(r'pixiv_(\d+)'), // pixiv_12345
-    ];
+    final patterns = <RegExp>[RegExp(r'illust_(\d+)[^\d]')];
 
     for (final re in patterns) {
       final m = re.firstMatch(fileName);

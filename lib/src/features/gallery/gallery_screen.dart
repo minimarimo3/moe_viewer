@@ -12,6 +12,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../settings/settings_screen.dart';
 import '../../core/providers/settings_provider.dart';
 import '../../core/repositories/image_repository.dart';
+import '../../core/services/database_helper.dart';
 import 'widgets/pie_menu_widget.dart';
 import 'widgets/gallery_grid_widget.dart';
 import 'widgets/gallery_list_widget.dart';
@@ -35,6 +36,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   final _imageRepository = ImageRepository();
+  final _db = DatabaseHelper.instance;
   // 一覧で表示されるアイテムのリスト
   List<dynamic> _displayItems = [];
   // 詳細画面で表示される画像ファイルのリスト
@@ -59,6 +61,13 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   bool _isAppBarVisible = true;
   // ★★★ 前回のスクロール位置を保持する変数 ★★★
   double _lastScrollOffset = 0.0;
+
+  // 検索状態
+  bool _isSearchMode = false;
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
+  // 検索により絞り込まれた index リスト（detailFiles のインデックスを保持）
+  List<int> _filteredDetailIndices = [];
 
   void _handleLongPress(dynamic item, Offset globalPosition) {
     // pie menu widget内でopenMenuForItemを呼び出すためのハンドラー
@@ -111,6 +120,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     _autoScrollController.dispose();
     _debounce?.cancel();
     _appBarAnimationController.dispose();
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -161,6 +172,9 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       _status = _displayItems.isEmpty
           ? LoadingStatus.empty
           : LoadingStatus.completed;
+      // 通常モードに戻す（ここでは直接代入して二重setStateを避ける）
+      _isSearchMode = false;
+      _filteredDetailIndices = [];
     });
 
     log('合計 ${imageList.displayItems.length} 個のアイテムが見つかりました（詳細画面用リストも準備完了）。');
@@ -194,6 +208,16 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); // UI表示
         _isAppBarVisible = true;
       }
+
+      // 検索クエリが空でなければ、検索結果を反映
+      final hasQuery =
+          _isSearchMode && _searchController.text.trim().isNotEmpty;
+      final effectiveDisplayItems = hasQuery
+          ? _filteredDetailIndices.map((i) => _displayItems[i]).toList()
+          : _displayItems;
+      final effectiveDetailFiles = hasQuery
+          ? _filteredDetailIndices.map((i) => _imageFilesForDetail[i]).toList()
+          : _imageFilesForDetail;
 
       switch (_status) {
         case LoadingStatus.loading:
@@ -241,8 +265,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                     return true;
                   },
                   child: GalleryListWidget(
-                    displayItems: _displayItems,
-                    imageFilesForDetail: _imageFilesForDetail,
+                    displayItems: effectiveDisplayItems,
+                    imageFilesForDetail: effectiveDetailFiles,
                     itemScrollController: _itemScrollController,
                     itemPositionsListener: _itemPositionsListener,
                     onLongPress: _handleLongPress,
@@ -251,8 +275,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                 )
               else
                 GalleryGridWidget(
-                  displayItems: _displayItems,
-                  imageFilesForDetail: _imageFilesForDetail,
+                  displayItems: effectiveDisplayItems,
+                  imageFilesForDetail: effectiveDetailFiles,
                   crossAxisCount: crossAxisCount,
                   autoScrollController: _autoScrollController,
                   onLongPress: _handleLongPress,
@@ -298,8 +322,42 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
           child: SizeTransition(
             sizeFactor: _appBarAnimationController,
             child: AppBar(
-              title: const Text('Pixiv Viewer'),
+              title: _isSearchMode
+                  ? TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: 'タグで検索（スペース区切りでAND）',
+                        border: InputBorder.none,
+                      ),
+                      textInputAction: TextInputAction.search,
+                      onChanged: _onSearchChanged,
+                      onSubmitted: (_) => _applySearch(),
+                    )
+                  : const Text('Pixiv Viewer'),
               actions: [
+                if (_isSearchMode)
+                  IconButton(
+                    icon: const Icon(Icons.backspace),
+                    tooltip: '入力クリア',
+                    onPressed: () {
+                      _searchController.clear();
+                      _onSearchChanged('');
+                    },
+                  ),
+                IconButton(
+                  icon: Icon(_isSearchMode ? Icons.close : Icons.search),
+                  tooltip: _isSearchMode ? '検索を閉じる' : 'タグ検索',
+                  onPressed: () {
+                    if (_isSearchMode) {
+                      _exitSearchMode();
+                    } else {
+                      setState(() {
+                        _isSearchMode = true;
+                      });
+                    }
+                  },
+                ),
                 IconButton(
                   icon: const Icon(Icons.shuffle),
                   tooltip: '表示順をシャッフル',
@@ -328,6 +386,46 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     );
   }
 
+  void _exitSearchMode({bool resetInput = true}) {
+    setState(() {
+      _isSearchMode = false;
+      _filteredDetailIndices = [];
+      if (resetInput) _searchController.clear();
+    });
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), _applySearch);
+  }
+
+  Future<void> _applySearch() async {
+    if (!_isSearchMode) return;
+    final raw = _searchController.text.trim();
+    // 空なら全解除
+    if (raw.isEmpty) {
+      setState(() {
+        _filteredDetailIndices = [];
+      });
+      return;
+    }
+
+    // スペース区切りでAND検索
+    final tokens = raw.split(RegExp(r"\s+"));
+    // DBからパスのヒットリストを取得
+    final hitPaths = await _db.searchByTags(tokens);
+    // 現在の detailFiles のインデックスに変換
+    final hitSet = hitPaths.toSet();
+    final indices = <int>[];
+    for (var i = 0; i < _imageFilesForDetail.length; i++) {
+      final p = _imageFilesForDetail[i].path;
+      if (hitSet.contains(p)) indices.add(i);
+    }
+    setState(() {
+      _filteredDetailIndices = indices;
+    });
+  }
+
   Future<void> _showShuffleConfirmationDialog() async {
     final confirm = await GalleryShuffleUtils.showShuffleConfirmationDialog(
       context,
@@ -350,6 +448,13 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       _displayItems = result.displayItems;
       _imageFilesForDetail = result.detailFiles;
     });
+
+    // 検索中なら再フィルタ
+    final hasQuery = _isSearchMode && _searchController.text.trim().isNotEmpty;
+    if (hasQuery) {
+      // 非同期だが結果は setState 内で反映
+      _applySearch();
+    }
 
     // しおりをリセット
     final settings = Provider.of<SettingsProvider>(context, listen: false);

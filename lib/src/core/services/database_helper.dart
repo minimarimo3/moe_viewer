@@ -87,6 +87,35 @@ class DatabaseHelper {
     );
   }
 
+  // 複数タグAND検索（大文字小文字を無視）し、該当パスのみ返す
+  Future<List<String>> searchByTags(List<String> tokens) async {
+    final normalized = tokens
+        .map((t) => t.trim().toLowerCase())
+        .where((t) => t.isNotEmpty)
+        .toList();
+    if (normalized.isEmpty) return <String>[];
+
+    final db = await instance.database;
+    final likeConds = List.filled(normalized.length, 'LOWER(tags) LIKE ?');
+    final whereCore = likeConds.join(' AND ');
+    // 既知のエラー行は除外
+    final exclusion = ' AND tags NOT LIKE ? AND tags NOT LIKE ?';
+    final where = whereCore + exclusion;
+    final args = [
+      ...normalized.map((t) => '%$t%'),
+      '%AI解析エラー%',
+      '%タグが見つかりませんでした%',
+    ];
+
+    final rows = await db.query(
+      'image_tags',
+      columns: ['path'],
+      where: where,
+      whereArgs: args,
+    );
+    return rows.map((r) => r['path'] as String).toList();
+  }
+
   // 解析済みのファイルの総数を取得する（ただし、エラーのものを除く）
   Future<int> getAnalyzedFileCount() async {
     final db = await instance.database;
