@@ -301,12 +301,8 @@ class SettingsProvider extends ChangeNotifier {
       } else {
         log("ダウンロードエラー: $e");
       }
-      if (await File(modelPath).exists()) {
-        await File(modelPath).delete();
-      }
-      if (await File(labelsPath).exists()) {
-        await File(labelsPath).delete();
-      }
+      // if (await File(modelPath).exists()) { await File(modelPath).delete(); }
+      // if (await File(labelsPath).exists()) { await File(labelsPath).delete(); }
     } finally {
       _isDownloading = false;
       notifyListeners();
