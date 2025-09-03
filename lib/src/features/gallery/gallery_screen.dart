@@ -588,16 +588,22 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
             color: theme.colorScheme.surface,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 300),
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: _suggestions.length,
-                itemBuilder: (context, index) {
-                  final s = _suggestions[index];
-                  return ListTile(
-                    title: Text(s),
-                    onTap: () => _insertSuggestion(s),
-                  );
-                },
+              child: MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  primary: false,
+                  shrinkWrap: true,
+                  itemCount: _suggestions.length,
+                  itemBuilder: (context, index) {
+                    final s = _suggestions[index];
+                    return ListTile(
+                      title: Text(s),
+                      onTap: () => _insertSuggestion(s),
+                    );
+                  },
+                ),
               ),
             ),
           ),
