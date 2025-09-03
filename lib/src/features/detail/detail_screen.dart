@@ -42,6 +42,12 @@ class _DetailScreenState extends State<DetailScreen>
   // ★★★ PageViewのスワイプを有効/無効にするための変数 ★★★
   bool _isPagingEnabled = true;
 
+  // 上スワイプで戻る判定用の変数
+  double? _verticalDragStartY;
+  double? _verticalDragCurrentY;
+  static const double _verticalSwipeDistanceThreshold = 80.0; // px
+  static const double _verticalSwipeVelocityThreshold = 500.0; // px/s
+
   final GlobalKey<DetailPieMenuWidgetState> _pieMenuKey =
       GlobalKey<DetailPieMenuWidgetState>();
 
@@ -355,6 +361,46 @@ class _DetailScreenState extends State<DetailScreen>
           onLongPressStart: (details) {
             _handleLongPress(details.globalPosition);
           },
+          // 縦スワイプで戻る動作を実装（ページング有効時のみハンドラを登録して、
+          // ズーム中にInteractiveViewerのジェスチャーが奪われないようにする）
+          onVerticalDragStart: _isPagingEnabled
+              ? (DragStartDetails details) {
+                  _verticalDragStartY = details.globalPosition.dy;
+                  _verticalDragCurrentY = _verticalDragStartY;
+                }
+              : null,
+          onVerticalDragUpdate: _isPagingEnabled
+              ? (DragUpdateDetails details) {
+                  if (_verticalDragStartY == null) return;
+                  _verticalDragCurrentY = details.globalPosition.dy;
+                }
+              : null,
+          onVerticalDragEnd: _isPagingEnabled
+              ? (DragEndDetails details) {
+                  if (_verticalDragStartY == null ||
+                      _verticalDragCurrentY == null) {
+                    _verticalDragStartY = null;
+                    _verticalDragCurrentY = null;
+                    return;
+                  }
+
+                  final dy = _verticalDragCurrentY! - _verticalDragStartY!;
+                  final vy = details.velocity.pixelsPerSecond.dy;
+
+                  // 上方向のスワイプ（dyが負）で閾値を越えたらPop
+                  final isSwipeUpDistance =
+                      dy.abs() > _verticalSwipeDistanceThreshold && dy < 0;
+                  final isSwipeUpVelocity =
+                      vy < -_verticalSwipeVelocityThreshold;
+
+                  if ((isSwipeUpDistance || isSwipeUpVelocity) && mounted) {
+                    Navigator.of(context).pop();
+                  }
+
+                  _verticalDragStartY = null;
+                  _verticalDragCurrentY = null;
+                }
+              : null,
           child: PageView.builder(
             controller: _pageController,
             physics: _isPagingEnabled
