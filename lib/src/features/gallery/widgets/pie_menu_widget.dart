@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/favorites_service.dart';
 import '../../../core/utils/pixiv_utils.dart';
 import 'package:photo_manager/photo_manager.dart';
+import '../../../core/services/albums_service.dart';
 
 class GalleryPieMenuWidget extends StatefulWidget {
   final Widget child;
@@ -139,11 +140,89 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
                 },
                 child: const Icon(Icons.favorite_border),
               ),
+              PieAction(
+                tooltip: const Text('アルバムに追加'),
+                onSelect: () async {
+                  final path = _currentTargetPath;
+                  if (path == null) return;
+                  final albumId = await _pickAlbumDialog(context);
+                  if (albumId == null) return;
+                  await AlbumsService.instance.addPaths(albumId, [path]);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('アルバムに追加しました')),
+                  );
+                },
+                child: const Icon(Icons.playlist_add),
+              ),
             ],
             child: const SizedBox.shrink(),
           ),
         ],
       ),
+    );
+  }
+
+  Future<int?> _pickAlbumDialog(BuildContext context) async {
+    final albums = await AlbumsService.instance.listAlbums();
+    return showDialog<int>(
+      context: context,
+      builder: (context) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          title: const Text('アルバムを選択'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (albums.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8.0),
+                    child: Text('アルバムがありません。新規作成してください。'),
+                  ),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: albums.length,
+                    itemBuilder: (context, index) {
+                      final a = albums[index];
+                      return ListTile(
+                        leading: const Icon(Icons.photo_album_outlined),
+                        title: Text(a.name),
+                        onTap: () => Navigator.of(context).pop(a.id),
+                      );
+                    },
+                  ),
+                ),
+                const Divider(),
+                TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    labelText: '新しいアルバム名',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              onPressed: () async {
+                final name = controller.text.trim();
+                if (name.isEmpty) return;
+                final album = await AlbumsService.instance.createAlbum(name);
+                if (!context.mounted) return;
+                Navigator.of(context).pop(album.id);
+              },
+              child: const Text('作成して追加'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

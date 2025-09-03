@@ -17,6 +17,8 @@ import 'widgets/pie_menu_widget.dart';
 import 'widgets/gallery_grid_widget.dart';
 import 'widgets/gallery_list_widget.dart';
 import 'utils/gallery_shuffle_utils.dart';
+import '../albums/albums_screen.dart';
+import '../../core/services/albums_service.dart';
 
 enum LoadingStatus {
   loading, // 読み込み中
@@ -392,6 +394,43 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                     )
                   : const Text('Pixiv Viewer'),
               actions: [
+                IconButton(
+                  icon: const Icon(Icons.photo_album_outlined),
+                  tooltip: 'アルバム',
+                  onPressed: () async {
+                    _exitSearchMode();
+                    if (!mounted) return;
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AlbumsScreen(),
+                      ),
+                    );
+                  },
+                ),
+                if (_isFilterActive)
+                  IconButton(
+                    icon: const Icon(Icons.playlist_add),
+                    tooltip: '検索結果をアルバムへ追加',
+                    onPressed: () async {
+                      // 現在の有効なリスト（フィルタ確定済み）をアルバムに一括追加
+                      final indices = _activeFilterIndices;
+                      if (indices.isEmpty) return;
+                      final paths = indices
+                          .map((i) => _imageFilesForDetail[i].path)
+                          .toList();
+                      final albumId = await _pickAlbumDialog(context);
+                      if (albumId == null) return;
+                      await DatabaseHelper.instance
+                          .addImagesToAlbum(albumId, paths);
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('${paths.length}件をアルバムに追加しました'),
+                        ),
+                      );
+                    },
+                  ),
                 if (_isFilterActive && !_isSearchMode)
                   IconButton(
                     icon: const Icon(Icons.filter_alt_off),
@@ -701,5 +740,68 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('表示順をシャッフルしました。')));
+  }
+
+  Future<int?> _pickAlbumDialog(BuildContext context) async {
+    final albums = await AlbumsService.instance.listAlbums();
+    return showDialog<int>(
+      context: context,
+      builder: (context) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          title: const Text('アルバムを選択'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (albums.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8.0),
+                    child: Text('アルバムがありません。新規作成してください。'),
+                  ),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: albums.length,
+                    itemBuilder: (context, index) {
+                      final a = albums[index];
+                      return ListTile(
+                        leading: const Icon(Icons.photo_album_outlined),
+                        title: Text(a.name),
+                        onTap: () => Navigator.of(context).pop(a.id),
+                      );
+                    },
+                  ),
+                ),
+                const Divider(),
+                TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    labelText: '新しいアルバム名',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('キャンセル'),
+            ),
+            TextButton(
+              onPressed: () async {
+                final name = controller.text.trim();
+                if (name.isEmpty) return;
+                final album = await AlbumsService.instance.createAlbum(name);
+                if (!context.mounted) return;
+                Navigator.of(context).pop(album.id);
+              },
+              child: const Text('作成して追加'),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

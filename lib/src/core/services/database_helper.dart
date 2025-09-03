@@ -15,7 +15,16 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(
+      path,
+      version: 2,
+      onCreate: _createDB,
+      onConfigure: (db) async {
+        // 外部キー制約を有効化
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
+      onUpgrade: _upgradeDB,
+    );
   }
 
   Future _createDB(Database db, int version) async {
@@ -26,6 +35,46 @@ class DatabaseHelper {
         analyzed_at INTEGER NOT NULL
       )
     ''');
+
+    // v2: アルバム関連
+    await db.execute('''
+      CREATE TABLE albums (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE album_items (
+        album_id INTEGER NOT NULL,
+        path TEXT NOT NULL,
+        added_at INTEGER NOT NULL,
+        PRIMARY KEY (album_id, path),
+        FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE
+      )
+    ''');
+  }
+
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS albums (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          created_at INTEGER NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS album_items (
+          album_id INTEGER NOT NULL,
+          path TEXT NOT NULL,
+          added_at INTEGER NOT NULL,
+          PRIMARY KEY (album_id, path),
+          FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE
+        )
+      ''');
+    }
   }
 
   // 解析結果を保存または更新する
@@ -148,5 +197,79 @@ class DatabaseHelper {
     final list = set.toList();
     list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     return list;
+  }
+
+  // ===== アルバムAPI =====
+  Future<int> createAlbum(String name) async {
+    final db = await instance.database;
+    final id = await db.insert('albums', {
+      'name': name,
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    });
+    return id;
+  }
+
+  Future<List<Map<String, dynamic>>> getAlbums() async {
+    final db = await instance.database;
+    return db.query('albums', orderBy: 'created_at DESC');
+  }
+
+  Future<void> renameAlbum(int albumId, String newName) async {
+    final db = await instance.database;
+    await db.update('albums', {'name': newName}, where: 'id = ?', whereArgs: [albumId]);
+  }
+
+  Future<void> deleteAlbum(int albumId) async {
+    final db = await instance.database;
+    // album_items は外部キーの ON DELETE CASCADE で削除される
+    await db.delete('albums', where: 'id = ?', whereArgs: [albumId]);
+  }
+
+  Future<void> addImageToAlbum(int albumId, String path) async {
+    final db = await instance.database;
+    await db.insert(
+      'album_items',
+      {
+        'album_id': albumId,
+        'path': path,
+        'added_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  Future<void> addImagesToAlbum(int albumId, List<String> paths) async {
+    final db = await instance.database;
+    final batch = db.batch();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final p in paths) {
+      batch.insert(
+        'album_items',
+        {'album_id': albumId, 'path': p, 'added_at': now},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> removeImageFromAlbum(int albumId, String path) async {
+    final db = await instance.database;
+    await db.delete(
+      'album_items',
+      where: 'album_id = ? AND path = ?',
+      whereArgs: [albumId, path],
+    );
+  }
+
+  Future<List<String>> getAlbumImagePaths(int albumId) async {
+    final db = await instance.database;
+    final rows = await db.query(
+      'album_items',
+      columns: ['path'],
+      where: 'album_id = ?',
+      whereArgs: [albumId],
+      orderBy: 'added_at DESC',
+    );
+    return rows.map((r) => r['path'] as String).toList();
   }
 }
