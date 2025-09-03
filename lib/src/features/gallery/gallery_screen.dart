@@ -68,6 +68,10 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   Timer? _searchDebounce;
   // 検索により絞り込まれた index リスト（detailFiles のインデックスを保持）
   List<int> _filteredDetailIndices = [];
+  // サジェスト関連
+  List<String> _allTags = [];
+  List<String> _suggestions = [];
+  OverlayEntry? _suggestionsOverlay;
 
   void _handleLongPress(dynamic item, Offset globalPosition) {
     // pie menu widget内でopenMenuForItemを呼び出すためのハンドラー
@@ -111,6 +115,11 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     _autoScrollController.addListener(_saveScrollPosition);
 
     _loadImages();
+
+    // ルートポップ時に検索を閉じる
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ModalRoute.of(context)?.addScopedWillPopCallback(_onWillPop);
+    });
   }
 
   @override
@@ -122,6 +131,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     _appBarAnimationController.dispose();
     _searchDebounce?.cancel();
     _searchController.dispose();
+  _removeSuggestionsOverlay();
+  ModalRoute.of(context)?.removeScopedWillPopCallback(_onWillPop);
     super.dispose();
   }
 
@@ -165,6 +176,9 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     final imageList = await _imageRepository.getAllImages(
       settings.folderSettings,
     );
+
+  // サジェスト用タグを先読み
+  _allTags = await _db.getAllTags();
 
     setState(() {
       _displayItems = imageList.displayItems;
@@ -219,7 +233,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
           ? _filteredDetailIndices.map((i) => _imageFilesForDetail[i]).toList()
           : _imageFilesForDetail;
 
-      switch (_status) {
+  switch (_status) {
         case LoadingStatus.loading:
           return const CircularProgressIndicator();
         case LoadingStatus.empty:
@@ -269,6 +283,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                     imageFilesForDetail: effectiveDetailFiles,
                     itemScrollController: _itemScrollController,
                     itemPositionsListener: _itemPositionsListener,
+                    onEnterDetail: () => _exitSearchMode(resetInput: false),
                     onLongPress: _handleLongPress,
                     imageSizeFutureCache: _imageSizeFutureCache,
                   ),
@@ -280,8 +295,25 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                   crossAxisCount: crossAxisCount,
                   autoScrollController: _autoScrollController,
                   onLongPress: _handleLongPress,
+                  onEnterDetail: () => _exitSearchMode(resetInput: false),
                 ),
 
+
+              // ヒットなしメッセージ
+              if (hasQuery && _filteredDetailIndices.isEmpty)
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      '該当する画像が見つかりませんでした',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
               // ローディング表示
               if (_isAutoScrolling)
                 Container(
@@ -323,22 +355,29 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
             sizeFactor: _appBarAnimationController,
             child: AppBar(
               title: _isSearchMode
-                  ? TextField(
-                      controller: _searchController,
-                      autofocus: true,
-                      decoration: const InputDecoration(
-                        hintText: 'タグで検索（スペース区切りでAND）',
-                        border: InputBorder.none,
+                  ? FocusScope(
+                      child: Focus(
+                        onFocusChange: (has) {
+                          if (!has) _exitSearchMode();
+                        },
+                        child: TextField(
+                          controller: _searchController,
+                          autofocus: true,
+                          decoration: const InputDecoration(
+                            hintText: 'タグで検索（スペース区切りでAND）',
+                            border: InputBorder.none,
+                          ),
+                          textInputAction: TextInputAction.search,
+                          onChanged: _onSearchChanged,
+                          onSubmitted: (_) => _applySearch(),
+                        ),
                       ),
-                      textInputAction: TextInputAction.search,
-                      onChanged: _onSearchChanged,
-                      onSubmitted: (_) => _applySearch(),
                     )
                   : const Text('Pixiv Viewer'),
               actions: [
-                if (_isSearchMode)
+        if (_isSearchMode)
                   IconButton(
-                    icon: const Icon(Icons.backspace),
+          icon: const Icon(Icons.clear),
                     tooltip: '入力クリア',
                     onPressed: () {
                       _searchController.clear();
@@ -354,6 +393,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                     } else {
                       setState(() {
                         _isSearchMode = true;
+                        _showSuggestionsOverlay();
                       });
                     }
                   },
@@ -368,6 +408,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                 IconButton(
                   icon: const Icon(Icons.settings_outlined),
                   onPressed: () async {
+                    _exitSearchMode();
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -386,16 +427,14 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     );
   }
 
-  void _exitSearchMode({bool resetInput = true}) {
-    setState(() {
-      _isSearchMode = false;
-      _filteredDetailIndices = [];
-      if (resetInput) _searchController.clear();
-    });
-  }
-
   void _onSearchChanged(String value) {
     _searchDebounce?.cancel();
+    // バックスペース等で空になったら検索終了
+    if (value.trim().isEmpty) {
+      _exitSearchMode();
+      return;
+    }
+    _updateSuggestions();
     _searchDebounce = Timer(const Duration(milliseconds: 300), _applySearch);
   }
 
@@ -423,6 +462,101 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     }
     setState(() {
       _filteredDetailIndices = indices;
+    });
+  }
+
+  // --- サジェスト ---
+  void _updateSuggestions() {
+    final raw = _searchController.text;
+    // 最後のトークンに対してサジェスト
+    final tokens = raw.split(RegExp(r"\s+")).where((e) => e.isNotEmpty).toList();
+    final last = tokens.isEmpty ? '' : tokens.last.toLowerCase();
+    if (last.isEmpty) {
+      _suggestions = [];
+      _removeSuggestionsOverlay();
+      return;
+    }
+    final matched = _allTags
+        .where((t) => t.toLowerCase().contains(last))
+        .take(20)
+        .toList();
+    _suggestions = matched;
+    if (_isSearchMode) _showSuggestionsOverlay();
+  }
+
+  void _insertSuggestion(String tag) {
+    final raw = _searchController.text.trimRight();
+    final parts = raw.split(RegExp(r"\s+")).where((e) => e.isNotEmpty).toList();
+    if (parts.isEmpty) {
+      _searchController.text = tag;
+    } else {
+      parts.removeLast();
+      parts.add(tag);
+      _searchController.text = parts.join(' ');
+    }
+    _searchController.selection = TextSelection.fromPosition(
+      TextPosition(offset: _searchController.text.length),
+    );
+    _updateSuggestions();
+    _applySearch();
+  }
+
+  void _showSuggestionsOverlay() {
+    _removeSuggestionsOverlay();
+    if (!_isSearchMode || _suggestions.isEmpty) return;
+  final overlay = Overlay.of(context);
+    final theme = Theme.of(context);
+    _suggestionsOverlay = OverlayEntry(
+      builder: (context) {
+        return Positioned(
+          left: 0,
+          right: 0,
+          top: MediaQuery.of(context).padding.top + kToolbarHeight,
+          child: Material(
+            elevation: 4,
+            color: theme.colorScheme.surface,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _suggestions.length,
+                itemBuilder: (context, index) {
+                  final s = _suggestions[index];
+                  return ListTile(
+                    title: Text(s),
+                    onTap: () => _insertSuggestion(s),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    overlay.insert(_suggestionsOverlay!);
+  }
+
+  void _removeSuggestionsOverlay() {
+    _suggestionsOverlay?.remove();
+    _suggestionsOverlay = null;
+  }
+
+  // --- 戻るキー/他画面遷移で検索を中断 ---
+  Future<bool> _onWillPop() async {
+    if (_isSearchMode) {
+      _exitSearchMode();
+      return false; // ここでpopを止める
+    }
+    return true;
+  }
+
+  void _exitSearchMode({bool resetInput = true}) {
+    setState(() {
+      _isSearchMode = false;
+      _filteredDetailIndices = [];
+      _suggestions = [];
+      _removeSuggestionsOverlay();
+      if (resetInput) _searchController.clear();
     });
   }
 

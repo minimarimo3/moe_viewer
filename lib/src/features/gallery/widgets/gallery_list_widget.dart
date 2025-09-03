@@ -12,6 +12,7 @@ class GalleryListWidget extends StatelessWidget {
   final ItemPositionsListener itemPositionsListener;
   final Function(dynamic item, Offset globalPosition) onLongPress;
   final Map<String, Future<Size>> imageSizeFutureCache;
+  final VoidCallback? onEnterDetail;
 
   const GalleryListWidget({
     super.key,
@@ -21,6 +22,7 @@ class GalleryListWidget extends StatelessWidget {
     required this.itemPositionsListener,
     required this.onLongPress,
     required this.imageSizeFutureCache,
+  this.onEnterDetail,
   });
 
   Future<Size> getImageSize(File imageFile) {
@@ -75,6 +77,7 @@ class GalleryListWidget extends StatelessWidget {
         final item = displayItems[index];
         return GestureDetector(
           onTap: () {
+            onEnterDetail?.call();
             Navigator.push(
               context,
               MaterialPageRoute(

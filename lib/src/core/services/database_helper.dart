@@ -126,4 +126,27 @@ class DatabaseHelper {
     );
     return Sqflite.firstIntValue(result) ?? 0;
   }
+
+  // 全タグ一覧（重複除去）を取得する。大文字小文字は区別しない。
+  Future<List<String>> getAllTags() async {
+    final db = await instance.database;
+    final rows = await db.query(
+      'image_tags',
+      columns: ['tags'],
+      where: 'tags NOT LIKE ? AND tags NOT LIKE ?',
+      whereArgs: ['%AI解析エラー%', '%タグが見つかりませんでした%'],
+    );
+    final set = <String>{};
+    for (final r in rows) {
+      final t = (r['tags'] as String?) ?? '';
+      for (final raw in t.split(',')) {
+        final s = raw.trim();
+        if (s.isEmpty) continue;
+        set.add(s);
+      }
+    }
+    final list = set.toList();
+    list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return list;
+  }
 }

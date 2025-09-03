@@ -13,6 +13,7 @@ class GalleryGridWidget extends StatelessWidget {
   final int crossAxisCount;
   final AutoScrollController autoScrollController;
   final Function(dynamic item, Offset globalPosition) onLongPress;
+  final VoidCallback? onEnterDetail;
 
   const GalleryGridWidget({
     super.key,
@@ -21,6 +22,7 @@ class GalleryGridWidget extends StatelessWidget {
     required this.crossAxisCount,
     required this.autoScrollController,
     required this.onLongPress,
+  this.onEnterDetail,
   });
 
   @override
@@ -68,6 +70,7 @@ class GalleryGridWidget extends StatelessWidget {
           index: index,
           child: GestureDetector(
             onTap: () async {
+              onEnterDetail?.call();
               await Navigator.push(
                 context,
                 MaterialPageRoute(
