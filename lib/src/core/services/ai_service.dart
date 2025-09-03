@@ -43,13 +43,17 @@ void _aiIsolateEntry(IsolateInitMessage initMessage) async {
       final modelPath = '${directory.path}/${initMessage.modelFileName}';
       final labelPath = '${directory.path}/${initMessage.labelFileName}';
 
-    // ランナー選択（拡張容易なディスパッチ）
-    runner = _selectRunner(initMessage.modelId, modelPath);
-    await runner.load(modelPath, labelPath,
-      inputSize: initMessage.inputSize, inputType: initMessage.inputType);
-    log('AI Isolate: Model loaded successfully by ${runner.runtimeType}.');
+      // ランナー選択（拡張容易なディスパッチ）
+      runner = _selectRunner(initMessage.modelId, modelPath);
+      await runner.load(
+        modelPath,
+        labelPath,
+        inputSize: initMessage.inputSize,
+        inputType: initMessage.inputType,
+      );
+      log('AI Isolate: Model loaded successfully by ${runner.runtimeType}.');
     } catch (e) {
-    log('AI Isolate: Failed to load model or labels: $e');
+      log('AI Isolate: Failed to load model or labels: $e');
     }
   }
 
@@ -96,10 +100,15 @@ class IsolateInitMessage {
     this.inputSize,
   );
 }
+
 /// ランナー共通インターフェース
 abstract class ModelRunner {
-  Future<void> load(String modelPath, String labelPath,
-      {required int inputSize, required String inputType});
+  Future<void> load(
+    String modelPath,
+    String labelPath, {
+    required int inputSize,
+    required String inputType,
+  });
   Map<String, dynamic> analyze(String filePath);
   Future<void> dispose();
 }
@@ -111,8 +120,12 @@ class TfliteModelRunner implements ModelRunner {
   late int _inputSize;
 
   @override
-  Future<void> load(String modelPath, String labelPath,
-      {required int inputSize, required String inputType}) async {
+  Future<void> load(
+    String modelPath,
+    String labelPath, {
+    required int inputSize,
+    required String inputType,
+  }) async {
     _inputSize = inputSize;
     _interpreter = Interpreter.fromFile(File(modelPath));
     final labelString = await File(labelPath).readAsString();
@@ -172,13 +185,12 @@ class TfliteModelRunner implements ModelRunner {
   }
 }
 
-
 /// TFLiteランナー（NHWC, RGB, float32）
 /// - 入力: [1, H, W, 3] (NHWC), ImageNet正規化
 /// - 出力: モデルにより1つ or 複数（[1, num_tags]）
 /// - 後処理: シグモイド適用（JSONのusageに準拠）
-/// 
-/// 
+///
+///
 /// NHWC, RGB, ImageNet 正規化の TFLite ランナー
 /// - 入力 dtype: float32 or float16（自動検出）
 /// - 出力 dtype: float32 を最優先、なければ float16 を使用（int 系は無視）
@@ -211,15 +223,21 @@ class TfliteNhwcModelRunner implements ModelRunner {
   }
 
   @override
-  Future<void> load(String modelPath, String labelPath,
-      {required int inputSize, required String inputType}) async {
+  Future<void> load(
+    String modelPath,
+    String labelPath, {
+    required int inputSize,
+    required String inputType,
+  }) async {
     _inputSize = inputSize;
     _inputType = inputType;
 
     await _loadLabelsFromJson(labelPath);
 
-    _interpreter =
-        Interpreter.fromFile(File(modelPath), options: _buildOptions());
+    _interpreter = Interpreter.fromFile(
+      File(modelPath),
+      options: _buildOptions(),
+    );
 
     final inTensor = _interpreter.getInputTensor(0);
     final inShape = inTensor.shape;
@@ -236,7 +254,8 @@ class TfliteNhwcModelRunner implements ModelRunner {
     if (!(_inputTfType == TensorType.float32 ||
         _inputTfType == TensorType.float16)) {
       throw StateError(
-          'Unsupported input tensor type: $_inputTfType. Expected float32 or float16.');
+        'Unsupported input tensor type: $_inputTfType. Expected float32 or float16.',
+      );
     }
     log('Input tensor dtype: $_inputTfType');
 
@@ -257,7 +276,9 @@ class TfliteNhwcModelRunner implements ModelRunner {
     if (_outputCount == 0) {
       throw StateError('No output tensors found.');
     }
-    log('Found $_outputCount output tensors. Shapes: $_outputShapes, Types: $_outputTypes');
+    log(
+      'Found $_outputCount output tensors. Shapes: $_outputShapes, Types: $_outputTypes',
+    );
 
     // 使用する出力を決める（refined系名→クラス数一致→float系の先頭）
     final expectedClasses = _totalTagsFromJson;
@@ -299,7 +320,8 @@ class TfliteNhwcModelRunner implements ModelRunner {
       }
       if (chosen < 0) {
         throw StateError(
-            'No float-like output found. Outputs: types=$_outputTypes shapes=$_outputShapes');
+          'No float-like output found. Outputs: types=$_outputTypes shapes=$_outputShapes',
+        );
       }
       log('Warning: Using first float-like output index: $chosen');
     }
@@ -311,14 +333,20 @@ class TfliteNhwcModelRunner implements ModelRunner {
     _numClasses = 1;
     for (int d = 1; d < chosenShape.length; d++) _numClasses *= chosenShape[d];
 
-    log('Chosen output index: $_chosenOutputIndex, shape=$chosenShape, '
-        'dtype=$_chosenOutputType, numClasses=$_numClasses (expected $expectedClasses)');
+    log(
+      'Chosen output index: $_chosenOutputIndex, shape=$chosenShape, '
+      'dtype=$_chosenOutputType, numClasses=$_numClasses (expected $expectedClasses)',
+    );
 
     if (_labels.length != _numClasses) {
-      log('Warning: label count (${_labels.length}) != output classes ($_numClasses).');
+      log(
+        'Warning: label count (${_labels.length}) != output classes ($_numClasses).',
+      );
       if (_labels.length < _numClasses) {
         final missing = _numClasses - _labels.length;
-        _labels.addAll(List.generate(missing, (i) => 'class_${_labels.length + i}'));
+        _labels.addAll(
+          List.generate(missing, (i) => 'class_${_labels.length + i}'),
+        );
       } else {
         _labels = _labels.sublist(0, _numClasses);
       }
@@ -338,17 +366,13 @@ class TfliteNhwcModelRunner implements ModelRunner {
         1,
         (_) => List.generate(
           _inputSize,
-          (y) => List.generate(
-            _inputSize,
-            (x) {
-              final p = imgBundle.image.getPixel(x, y);
-              final r = (p.r / 255.0 - _mean[0]) / _std[0];
-              final g = (p.g / 255.0 - _mean[1]) / _std[1];
-              final b = (p.b / 255.0 - _mean[2]) / _std[2];
-              return [r, g, b];
-            },
-            growable: false,
-          ),
+          (y) => List.generate(_inputSize, (x) {
+            final p = imgBundle.image.getPixel(x, y);
+            final r = (p.r / 255.0 - _mean[0]) / _std[0];
+            final g = (p.g / 255.0 - _mean[1]) / _std[1];
+            final b = (p.b / 255.0 - _mean[2]) / _std[2];
+            return [r, g, b];
+          }, growable: false),
           growable: false,
         ),
         growable: false,
@@ -358,21 +382,17 @@ class TfliteNhwcModelRunner implements ModelRunner {
         1,
         (_) => List.generate(
           _inputSize,
-          (y) => List.generate(
-            _inputSize,
-            (x) {
-              final p = imgBundle.image.getPixel(x, y);
-              final r = (p.r / 255.0 - _mean[0]) / _std[0];
-              final g = (p.g / 255.0 - _mean[1]) / _std[1];
-              final b = (p.b / 255.0 - _mean[2]) / _std[2];
-              return [
-                _float32ToHalfBits(r),
-                _float32ToHalfBits(g),
-                _float32ToHalfBits(b),
-              ];
-            },
-            growable: false,
-          ),
+          (y) => List.generate(_inputSize, (x) {
+            final p = imgBundle.image.getPixel(x, y);
+            final r = (p.r / 255.0 - _mean[0]) / _std[0];
+            final g = (p.g / 255.0 - _mean[1]) / _std[1];
+            final b = (p.b / 255.0 - _mean[2]) / _std[2];
+            return [
+              _float32ToHalfBits(r),
+              _float32ToHalfBits(g),
+              _float32ToHalfBits(b),
+            ];
+          }, growable: false),
           growable: false,
         ),
         growable: false,
@@ -396,29 +416,46 @@ class TfliteNhwcModelRunner implements ModelRunner {
       Object buf;
       switch (type) {
         case TensorType.float32:
-          buf = List.generate(batch, (_) => List.filled(elements, 0.0),
-              growable: false);
+          buf = List.generate(
+            batch,
+            (_) => List.filled(elements, 0.0),
+            growable: false,
+          );
           break;
         case TensorType.float16:
           // half は Uint16 ビット表現で受ける
-          buf = List.generate(batch, (_) => List.filled(elements, 0),
-              growable: false);
+          buf = List.generate(
+            batch,
+            (_) => List.filled(elements, 0),
+            growable: false,
+          );
           break;
         case TensorType.int64:
         case TensorType.int32:
         case TensorType.uint8:
-          buf = List.generate(batch, (_) => List.filled(elements, 0),
-              growable: false);
+          buf = List.generate(
+            batch,
+            (_) => List.filled(elements, 0),
+            growable: false,
+          );
           break;
         case TensorType.boolean:
-          buf = List.generate(batch, (_) => List.filled(elements, false),
-              growable: false);
+          buf = List.generate(
+            batch,
+            (_) => List.filled(elements, false),
+            growable: false,
+          );
           break;
         default:
           // 未対応タイプは int で受けておく（ほぼ来ない想定）
-          buf = List.generate(batch, (_) => List.filled(elements, 0),
-              growable: false);
-          log('Warning: Output #$i has unsupported dtype $type. Receiving as int.');
+          buf = List.generate(
+            batch,
+            (_) => List.filled(elements, 0),
+            growable: false,
+          );
+          log(
+            'Warning: Output #$i has unsupported dtype $type. Receiving as int.',
+          );
       }
       outputs[i] = buf;
     }
@@ -432,14 +469,18 @@ class TfliteNhwcModelRunner implements ModelRunner {
       final chosen = outputs[_chosenOutputIndex] as List<List<double>>;
       final logits = chosen[0];
       probs = List<double>.generate(
-          logits.length, (i) => _sigmoid(logits[i]),
-          growable: false);
+        logits.length,
+        (i) => _sigmoid(logits[i]),
+        growable: false,
+      );
     } else if (_chosenOutputType == TensorType.float16) {
       final chosen = outputs[_chosenOutputIndex] as List<List<int>>;
       final halfs = chosen[0];
       probs = List<double>.generate(
-          halfs.length, (i) => _sigmoid(_halfBitsToFloat32(halfs[i])),
-          growable: false);
+        halfs.length,
+        (i) => _sigmoid(_halfBitsToFloat32(halfs[i])),
+        growable: false,
+      );
     } else {
       throw StateError('Unsupported chosen output dtype: $_chosenOutputType');
     }
@@ -449,7 +490,7 @@ class TfliteNhwcModelRunner implements ModelRunner {
 
     return {
       'tags': tags.isEmpty ? ['タグが見つかりませんでした'] : tags,
-  'image': imgBundle.base64Image,
+      'image': imgBundle.base64Image,
     };
   }
 
@@ -474,10 +515,11 @@ class TfliteNhwcModelRunner implements ModelRunner {
 
     final idxToTag = j['dataset_info']?['tag_mapping']?['idx_to_tag'];
     if (idxToTag is Map<String, dynamic>) {
-      final entries = idxToTag.entries
-          .map((e) => MapEntry(int.parse(e.key), e.value.toString()))
-          .toList()
-        ..sort((a, b) => a.key.compareTo(b.key));
+      final entries =
+          idxToTag.entries
+              .map((e) => MapEntry(int.parse(e.key), e.value.toString()))
+              .toList()
+            ..sort((a, b) => a.key.compareTo(b.key));
       _labels = entries.map((e) => e.value).toList();
       log('Loaded ${_labels.length} labels from idx_to_tag.');
       return;
@@ -485,10 +527,11 @@ class TfliteNhwcModelRunner implements ModelRunner {
 
     final tagToIdx = j['dataset_info']?['tag_mapping']?['tag_to_idx'];
     if (tagToIdx is Map<String, dynamic>) {
-      final pairs = tagToIdx.entries
-          .map((e) => MapEntry((e.value as num).toInt(), e.key.toString()))
-          .toList()
-        ..sort((a, b) => a.key.compareTo(b.key));
+      final pairs =
+          tagToIdx.entries
+              .map((e) => MapEntry((e.value as num).toInt(), e.key.toString()))
+              .toList()
+            ..sort((a, b) => a.key.compareTo(b.key));
       _labels = pairs.map((e) => e.value).toList();
       log('Loaded ${_labels.length} labels from tag_to_idx.');
       return;
@@ -537,11 +580,18 @@ class TfliteNhwcModelRunner implements ModelRunner {
 
     final pngBytes = img.encodePng(resized);
     final b64 = base64Encode(pngBytes);
-    return _ImgBundle(image: resized, base64Image: 'data:image/png;base64,$b64');
+    return _ImgBundle(
+      image: resized,
+      base64Image: 'data:image/png;base64,$b64',
+    );
   }
 
-  List<String> _postprocess(List<double> probs, List<String> labels,
-      {double threshold = 0.5, int topK = 20}) {
+  List<String> _postprocess(
+    List<double> probs,
+    List<String> labels, {
+    double threshold = 0.5,
+    int topK = 20,
+  }) {
     final N = math.min(probs.length, labels.length);
 
     final passed = <_ScoredLabel>[];
@@ -670,9 +720,6 @@ class _ScoredLabel {
   _ScoredLabel(this.label, this.score);
 }
 
-
-
-
 /// ONNXランナー（[1,3,512,512] 対応、NCHW、ImageNet正規化）
 class OnnxModelRunner implements ModelRunner {
   late ort.OrtSession _session;
@@ -681,13 +728,17 @@ class OnnxModelRunner implements ModelRunner {
   late String _inputName;
 
   @override
-  Future<void> load(String modelPath, String labelPath,
-      {required int inputSize, required String inputType}) async {
+  Future<void> load(
+    String modelPath,
+    String labelPath, {
+    required int inputSize,
+    required String inputType,
+  }) async {
     _inputSize = inputSize;
 
     // セッション作成
     final options = ort.OrtSessionOptions();
-  _session = ort.OrtSession.fromFile(File(modelPath), options);
+    _session = ort.OrtSession.fromFile(File(modelPath), options);
 
     // 入力名（最初の入力）
     final inputNames = _session.inputNames;
@@ -696,8 +747,9 @@ class OnnxModelRunner implements ModelRunner {
     // ラベル（JSON形式: dataset_info.tag_mapping.tag_to_idx）
     final jsonStr = await File(labelPath).readAsString();
     final jsonMap = json.decode(jsonStr) as Map<String, dynamic>;
-    final mapping = (jsonMap['dataset_info']?['tag_mapping']?['tag_to_idx']
-        as Map<String, dynamic>);
+    final mapping =
+        (jsonMap['dataset_info']?['tag_mapping']?['tag_to_idx']
+            as Map<String, dynamic>);
     final size = mapping.length;
     final labels = List<String>.filled(size, '', growable: false);
     mapping.forEach((k, v) {
@@ -733,14 +785,22 @@ class OnnxModelRunner implements ModelRunner {
       }
     }
 
-    final inputTensor =
-        ort.OrtValueTensor.createTensorWithDataList(data, [1, 3, H, W]);
+    final inputTensor = ort.OrtValueTensor.createTensorWithDataList(data, [
+      1,
+      3,
+      H,
+      W,
+    ]);
 
-  final outputs = _session.run(ort.OrtRunOptions(), {_inputName: inputTensor});
-  // 最初の出力を利用
-  final first = outputs.first as ort.OrtValueTensor;
-  final dynamic raw = first.value; // expect Float32List
-  final scores = raw is Float32List ? raw : Float32List.fromList(List<double>.from(raw as List));
+    final outputs = _session.run(ort.OrtRunOptions(), {
+      _inputName: inputTensor,
+    });
+    // 最初の出力を利用
+    final first = outputs.first as ort.OrtValueTensor;
+    final dynamic raw = first.value; // expect Float32List
+    final scores = raw is Float32List
+        ? raw
+        : Float32List.fromList(List<double>.from(raw as List));
 
     final tags = _postprocess(scores, _labels);
     return {
@@ -771,7 +831,7 @@ ModelRunner _selectRunner(String modelId, String modelPath) {
   };
   if (camieIds.contains(id) || modelPath.toLowerCase().endsWith('.tflite')) {
     return TfliteNhwcModelRunner();
-  } 
+  }
   // 既定はTFLite
   return TfliteModelRunner();
 }
@@ -782,8 +842,11 @@ class _PreprocessedImage {
   _PreprocessedImage(this.image, this.base64Image);
 }
 
-_PreprocessedImage _preprocess(String filePath, int inputSize,
-    {bool normalize = false}) {
+_PreprocessedImage _preprocess(
+  String filePath,
+  int inputSize, {
+  bool normalize = false,
+}) {
   final imageFile = File(filePath);
   final imageBytes = imageFile.readAsBytesSync();
   img.Image? image = img.decodeImage(imageBytes);
@@ -820,8 +883,11 @@ _PreprocessedImage _preprocess(String filePath, int inputSize,
   return _PreprocessedImage(validImage, base64Image);
 }
 
-List<String> _postprocess(List<double> scores, List<String> labels,
-    {double threshold = 0.35}) {
+List<String> _postprocess(
+  List<double> scores,
+  List<String> labels, {
+  double threshold = 0.35,
+}) {
   final result = <String>[];
   final len = scores.length < labels.length ? scores.length : labels.length;
   for (var i = 0; i < len; i++) {
@@ -866,16 +932,16 @@ class AiService {
       return;
     }
 
-  _isolate = await Isolate.spawn(
+    _isolate = await Isolate.spawn(
       _aiIsolateEntry,
       IsolateInitMessage(
         _mainReceivePort!.sendPort,
         token,
-    modelDef.id,
+        modelDef.id,
         modelDef.modelFileName,
         modelDef.labelFileName,
         modelDef.inputType,
-    modelDef.inputSize,
+        modelDef.inputSize,
       ),
     );
 
@@ -910,16 +976,16 @@ class AiService {
       return;
     }
 
-  _isolate = await Isolate.spawn(
+    _isolate = await Isolate.spawn(
       _aiIsolateEntry,
       IsolateInitMessage(
         _mainReceivePort!.sendPort,
         token,
-    modelDef.id,
+        modelDef.id,
         modelDef.modelFileName,
         modelDef.labelFileName,
         modelDef.inputType,
-    modelDef.inputSize,
+        modelDef.inputSize,
       ),
     );
 

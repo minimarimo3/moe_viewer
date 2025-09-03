@@ -543,9 +543,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           ),
                                           child: Image.memory(
                                             (() {
-                                              final s = settings.currentAnalyzedImageBase64!;
+                                              final s = settings
+                                                  .currentAnalyzedImageBase64!;
                                               final comma = s.indexOf(',');
-                                              final payload = (s.startsWith('data:') && comma != -1)
+                                              final payload =
+                                                  (s.startsWith('data:') &&
+                                                      comma != -1)
                                                   ? s.substring(comma + 1)
                                                   : s;
                                               return base64Decode(payload);
