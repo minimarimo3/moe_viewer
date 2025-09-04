@@ -57,25 +57,30 @@ class _DetailScreenState extends State<DetailScreen>
   }
 
   Future<void> _showImageDetails(File imageFile) async {
-    // 画像のバイトデータを読み込み
-    /*
-    final bytes = await imageFile.readAsBytes();
-    // 画像をデコードして解像度を取得（重い）
-    final image = img.decodeImage(bytes);
-    final dimensions = (image != null)
-        ? '${image.width} x ${image.height}'
-        : '不明';
-    // ファイルサイズを取得してフォーマット
-    final sizeInBytes = await imageFile.length();
-    final sizeFormatted = _formatBytes(sizeInBytes, 2);
-    */
-
     // データベースからタグを取得
     final tags = await DatabaseHelper.instance.getTagsForPath(imageFile.path);
     // Pixiv IDを取得
     final pixivId = _extractPixivId(imageFile.path);
 
     if (!mounted) return;
+
+    // タグの数に応じて初期サイズを動的に計算
+    double initialSize = 0.4;
+    if (tags != null && tags.isNotEmpty) {
+      // タグの数に基づいて初期サイズを調整（最大0.7まで）
+      final tagCount = tags.length;
+      if (tagCount > 20) {
+        initialSize = 0.7;
+      } else if (tagCount > 10) {
+        initialSize = 0.55;
+      } else if (tagCount > 5) {
+        initialSize = 0.45;
+      }
+    }
+
+    // DraggableScrollableSheetのコントローラーを作成
+    final DraggableScrollableController draggableController =
+        DraggableScrollableController();
 
     // 画面下からスライドアップするパネル（DraggableScrollableSheet を内包した ModalBottomSheet）を表示
     showModalBottomSheet(
@@ -84,11 +89,15 @@ class _DetailScreenState extends State<DetailScreen>
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
         final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+
         return DraggableScrollableSheet(
+          controller: draggableController,
           expand: false,
-          initialChildSize: 0.4,
+          initialChildSize: initialSize,
           minChildSize: 0.2,
           maxChildSize: 0.95,
+          snap: true,
+          snapSizes: const [0.2, 0.4, 0.7, 0.95],
           builder: (context, scrollController) {
             return Container(
               decoration: BoxDecoration(
@@ -96,88 +105,256 @@ class _DetailScreenState extends State<DetailScreen>
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(16.0),
                 ),
-              ),
-              padding: EdgeInsets.only(
-                top: 16.0,
-                left: 8.0,
-                right: 8.0,
-                bottom: 16.0 + bottomPadding,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ヘッダのつまみ
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 8.0),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[400],
-                        borderRadius: BorderRadius.circular(2.0),
-                      ),
+                  // ヘッダ部分（ドラッグハンドル + タイトル + 操作ボタン）
+                  Container(
+                    padding: EdgeInsets.only(
+                      top: 16.0,
+                      left: 16.0,
+                      right: 16.0,
+                      bottom: 8.0,
+                    ),
+                    child: Column(
+                      children: [
+                        // ドラッグハンドル
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            margin: const EdgeInsets.only(bottom: 16.0),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[400],
+                              borderRadius: BorderRadius.circular(2.0),
+                            ),
+                          ),
+                        ),
+                        // タイトル行
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              '画像の詳細',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // 展開ボタン
+                                IconButton(
+                                  icon: const Icon(Icons.expand_less),
+                                  tooltip: '展開',
+                                  onPressed: () {
+                                    draggableController.animateTo(
+                                      0.95,
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
+                                      curve: Curves.easeOut,
+                                    );
+                                  },
+                                ),
+                                // 縮小ボタン
+                                IconButton(
+                                  icon: const Icon(Icons.expand_more),
+                                  tooltip: '縮小',
+                                  onPressed: () {
+                                    draggableController.animateTo(
+                                      0.2,
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
+                                      curve: Curves.easeOut,
+                                    );
+                                  },
+                                ),
+                                // 閉じるボタン
+                                IconButton(
+                                  icon: const Icon(Icons.close),
+                                  tooltip: '閉じる',
+                                  onPressed: () => Navigator.of(context).pop(),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 1),
+                      ],
                     ),
                   ),
-                  const Text(
-                    '画像の詳細',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const Divider(),
-                  // 本文部分はスクロールさせるため ListView を使う（DraggableScrollableSheet の controller を利用）
+                  // 本文部分
                   Expanded(
-                    child: ListView(
+                    child: SingleChildScrollView(
                       controller: scrollController,
-                      children: <Widget>[
-                        if (tags != null && tags.isNotEmpty)
-                          ListTile(
-                            leading: const Icon(Icons.psychology_outlined),
-                            title: const Text('AIによる解析タグ'),
-                            subtitle: Wrap(
-                              spacing: 6.0,
-                              runSpacing: 4.0,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: EdgeInsets.only(
+                        left: 16.0,
+                        right: 16.0,
+                        bottom: 16.0 + bottomPadding,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          if (tags != null && tags.isNotEmpty) ...[
+                            const SizedBox(height: 8.0),
+                            Row(
+                              children: [
+                                const Icon(Icons.psychology_outlined, size: 20),
+                                const SizedBox(width: 8.0),
+                                Text(
+                                  'AIによる解析タグ (${tags.length}個)',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12.0),
+                            Wrap(
+                              spacing: 8.0,
+                              runSpacing: 8.0,
                               children: tags
                                   .map(
                                     (tag) => Chip(
                                       label: Text(tag),
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 4.0,
-                                        vertical: 0,
+                                        horizontal: 8.0,
+                                        vertical: 4.0,
                                       ),
-                                      labelStyle: const TextStyle(fontSize: 12),
+                                      labelStyle: const TextStyle(fontSize: 13),
+                                      backgroundColor: Theme.of(context)
+                                          .colorScheme
+                                          .primaryContainer
+                                          .withValues(alpha: 0.7),
                                     ),
                                   )
                                   .toList(),
                             ),
+                            const SizedBox(height: 24.0),
+                          ],
+                          // ファイル情報セクション
+                          Row(
+                            children: [
+                              const Icon(Icons.folder_outlined, size: 20),
+                              const SizedBox(width: 8.0),
+                              const Text(
+                                'ファイル情報',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
-                        /*
-                        ListTile(
-                          leading: Icon(Icons.photo_size_select_actual_outlined),
-                          title: Text('解像度: $dimensions'),
-                        ),
-                        ListTile(
-                          leading: Icon(Icons.sd_storage_outlined),
-                          title: Text('ファイルサイズ: $sizeFormatted'),
-                        ),
-                        */
-                        ListTile(
-                          leading: const Icon(Icons.folder_outlined),
-                          title: const Text('ファイルパス'),
-                          subtitle: Text(imageFile.path),
-                        ),
-                        if (pixivId != null)
-                          ListTile(
-                            leading: const Icon(Icons.open_in_new),
-                            title: const Text('Pixivで作品を見る'),
-                            subtitle: Text('ID: $pixivId'),
-                            onTap: () {
-                              _launchURL(
-                                'https://www.pixiv.net/artworks/$pixivId',
-                              );
-                            },
+                          const SizedBox(height: 12.0),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12.0),
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceVariant.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(8.0),
+                            ),
+                            child: SelectableText(
+                              imageFile.path,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
                           ),
-                        // 余白を入れて下部のメニューや画面が見切れないようにする
-                        SizedBox(height: 8.0 + bottomPadding),
-                      ],
+                          if (pixivId != null) ...[
+                            const SizedBox(height: 24.0),
+                            Row(
+                              children: [
+                                const Icon(Icons.open_in_new, size: 20),
+                                const SizedBox(width: 8.0),
+                                const Text(
+                                  'Pixiv連携',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12.0),
+                            InkWell(
+                              onTap: () {
+                                _launchURL(
+                                  'https://www.pixiv.net/artworks/$pixivId',
+                                );
+                              },
+                              borderRadius: BorderRadius.circular(8.0),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16.0),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.primaryContainer,
+                                  borderRadius: BorderRadius.circular(8.0),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.launch,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onPrimaryContainer,
+                                    ),
+                                    const SizedBox(width: 12.0),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Pixivで作品を見る',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onPrimaryContainer,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4.0),
+                                          Text(
+                                            'ID: $pixivId',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onPrimaryContainer
+                                                  .withOpacity(0.8),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                          // 下部の余白
+                          const SizedBox(height: 16.0),
+                        ],
+                      ),
                     ),
                   ),
                 ],
