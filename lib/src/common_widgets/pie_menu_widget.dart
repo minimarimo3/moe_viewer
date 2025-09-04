@@ -121,9 +121,9 @@ class PieMenuWidgetState extends State<PieMenuWidget> {
             if (await canLaunchUrl(uri)) {
               await launchUrl(uri);
             } else if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('リンクを開けませんでした')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('リンクを開けませんでした')));
             }
           },
           child: const Icon(Icons.open_in_new),
@@ -136,9 +136,7 @@ class PieMenuWidgetState extends State<PieMenuWidget> {
           final newState = await FavoritesService.instance.toggleFavorite(path);
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました'),
-            ),
+            SnackBar(content: Text(newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました')),
           );
         },
         child: const Icon(Icons.favorite_border),
@@ -186,9 +184,9 @@ class PieMenuWidgetState extends State<PieMenuWidget> {
             if (confirmed != true) return;
             await AlbumsService.instance.removePath(aid, path);
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('アルバムから削除しました')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('アルバムから削除しました')));
             // 親画面を更新
             if (widget.onRemove != null) {
               await widget.onRemove!();

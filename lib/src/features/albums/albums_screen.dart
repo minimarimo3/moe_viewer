@@ -353,7 +353,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                     albumId: widget.album.id,
                     // アルバムから削除後に一覧を更新
                     onRemove: _load,
-                    
+
                     child: GalleryGridWidget(
                       displayItems: _files,
                       imageFilesForDetail: _files,

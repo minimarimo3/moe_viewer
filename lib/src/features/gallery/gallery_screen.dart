@@ -739,6 +739,4 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       context,
     ).showSnackBar(const SnackBar(content: Text('表示順をシャッフルしました。')));
   }
-
-  
 }
