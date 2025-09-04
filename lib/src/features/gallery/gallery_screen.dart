@@ -252,11 +252,9 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         context,
       ).gridCrossAxisCount;
 
-      if (crossAxisCount > 1 && !_isAppBarVisible) {
-        _appBarAnimationController.forward();
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); // UI表示
-        _isAppBarVisible = true;
-      }
+      // appBar の表示/非表示はスクロールによって制御する。
+      // 以前はグリッド表示 (crossAxisCount > 1) のときに強制的に表示していたが、
+      // グリッドでもスクロールで非表示にしたいためその動作を削除する。
 
       // 有効な検索（Enter確定）や入力中の検索を反映
       final hasActiveFilter = _isFilterActive;
@@ -290,59 +288,57 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         case LoadingStatus.completed:
           return Stack(
             children: [
-              // メイン表示ウィジェット
-              if (crossAxisCount == 1)
-                // ★★★ `UserScrollNotification` から `ScrollNotification` に変更 ★★★
-                NotificationListener<ScrollNotification>(
-                  onNotification: (notification) {
-                    // ★★★ スクロール開始時と終了時は無視し、スクロール中のみ処理 ★★★
-                    if (notification is ScrollUpdateNotification) {
-                      final scrollDelta =
-                          notification.metrics.pixels - _lastScrollOffset;
-                      const scrollThreshold = 15.0; // しきい値
+              // メイン表示ウィジェット（リスト/グリッド両方をスクロール通知で監視）
+              NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  // スクロール中のみ処理
+                  if (notification is ScrollUpdateNotification) {
+                    final scrollDelta =
+                        notification.metrics.pixels - _lastScrollOffset;
+                    const scrollThreshold = 15.0; // しきい値
 
-                      if (scrollDelta.abs() > scrollThreshold) {
-                        if (scrollDelta > 0 && _isAppBarVisible) {
-                          // 下にスクロール
-                          _appBarAnimationController.reverse();
-                          // ★★★ ステータスバーなどを非表示（没入モード） ★★★
-                          SystemChrome.setEnabledSystemUIMode(
-                            SystemUiMode.immersiveSticky,
-                          );
-                          _isAppBarVisible = false;
-                        } else if (scrollDelta < 0 && !_isAppBarVisible) {
-                          // 上にスクロール
-                          _appBarAnimationController.forward();
-                          // ★★★ ステータスバーなどを表示 ★★★
-                          SystemChrome.setEnabledSystemUIMode(
-                            SystemUiMode.edgeToEdge,
-                          );
-                          _isAppBarVisible = true;
-                        }
+                    if (scrollDelta.abs() > scrollThreshold) {
+                      if (scrollDelta > 0 && _isAppBarVisible) {
+                        // 下にスクロール
+                        _appBarAnimationController.reverse();
+                        // ステータスバーなどを非表示（没入モード）
+                        SystemChrome.setEnabledSystemUIMode(
+                          SystemUiMode.immersiveSticky,
+                        );
+                        _isAppBarVisible = false;
+                      } else if (scrollDelta < 0 && !_isAppBarVisible) {
+                        // 上にスクロール
+                        _appBarAnimationController.forward();
+                        // ステータスバーなどを表示
+                        SystemChrome.setEnabledSystemUIMode(
+                          SystemUiMode.edgeToEdge,
+                        );
+                        _isAppBarVisible = true;
                       }
-                      _lastScrollOffset = notification.metrics.pixels;
                     }
-                    return true;
-                  },
-                  child: GalleryListWidget(
-                    displayItems: effectiveDisplayItems,
-                    imageFilesForDetail: effectiveDetailFiles,
-                    itemScrollController: _itemScrollController,
-                    itemPositionsListener: _itemPositionsListener,
-                    onEnterDetail: () => _exitSearchMode(resetInput: false),
-                    onLongPress: _handleLongPress,
-                    imageSizeFutureCache: _imageSizeFutureCache,
-                  ),
-                )
-              else
-                GalleryGridWidget(
-                  displayItems: effectiveDisplayItems,
-                  imageFilesForDetail: effectiveDetailFiles,
-                  crossAxisCount: crossAxisCount,
-                  autoScrollController: _autoScrollController,
-                  onLongPress: _handleLongPress,
-                  onEnterDetail: () => _exitSearchMode(resetInput: false),
-                ),
+                    _lastScrollOffset = notification.metrics.pixels;
+                  }
+                  return true;
+                },
+                child: crossAxisCount == 1
+                    ? GalleryListWidget(
+                        displayItems: effectiveDisplayItems,
+                        imageFilesForDetail: effectiveDetailFiles,
+                        itemScrollController: _itemScrollController,
+                        itemPositionsListener: _itemPositionsListener,
+                        onEnterDetail: () => _exitSearchMode(resetInput: false),
+                        onLongPress: _handleLongPress,
+                        imageSizeFutureCache: _imageSizeFutureCache,
+                      )
+                    : GalleryGridWidget(
+                        displayItems: effectiveDisplayItems,
+                        imageFilesForDetail: effectiveDetailFiles,
+                        crossAxisCount: crossAxisCount,
+                        autoScrollController: _autoScrollController,
+                        onLongPress: _handleLongPress,
+                        onEnterDetail: () => _exitSearchMode(resetInput: false),
+                      ),
+              ),
 
               // ヒットなしメッセージ
               if (showingEmpty)
