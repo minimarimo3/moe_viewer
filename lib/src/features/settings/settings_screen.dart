@@ -22,6 +22,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasFullAccess = false;
   int _shownDownloadErrorVersion = 0; // SnackBar多重表示防止
+  int _shownHashMismatchErrorVersion = 0; // ハッシュ不一致エラーSnackBar多重表示防止
 
   @override
   void initState() {
@@ -118,6 +119,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 content: Text(msg),
                 backgroundColor: Colors.red,
                 behavior: SnackBarBehavior.floating,
+              ),
+            );
+          });
+        }
+
+        // ハッシュ不一致時のユーザー通知（SnackBar）
+        if (settings.hashMismatchErrorMessage != null &&
+            settings.hashMismatchErrorVersion !=
+                _shownHashMismatchErrorVersion) {
+          _shownHashMismatchErrorVersion = settings.hashMismatchErrorVersion;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final msg = settings.hashMismatchErrorMessage!;
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(msg),
+                backgroundColor: Colors.orange,
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 5),
               ),
             );
           });
@@ -388,42 +408,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           children: [
                             // もしモデルが破損していたら、警告と修復ボタンを表示
                             if (settings.isModelCorrupted)
-                              ListTile(
-                                leading: Icon(
-                                  Icons.warning_amber_rounded,
-                                  color: Colors.red,
-                                ),
-                                title: Text('モデルファイルが破損しています'),
-                                trailing: ElevatedButton(
-                                  child: const Text('修復'),
-                                  onPressed: () async {
-                                    // ★★★ 再ダウンロードの確認ダイアログを表示 ★★★
-                                    final confirm = await showDialog<bool>(
-                                      context: context,
-                                      builder: (context) => AlertDialog(
-                                        title: const Text('モデルの再ダウンロード'),
-                                        content: const Text(
-                                          'モデルファイルを再ダウンロードして修復しますか？',
+                              Card(
+                                color: Colors.red.shade50,
+                                child: ListTile(
+                                  leading: Icon(
+                                    Icons.error_outline,
+                                    color: Colors.red,
+                                    size: 32,
+                                  ),
+                                  title: Text(
+                                    'モデルファイルが破損しています',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.red.shade800,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    'ハッシュ値が一致しないため、ファイルが破損している可能性があります。\nモデルを修復することをお勧めします。',
+                                    style: TextStyle(
+                                      color: Colors.red.shade700,
+                                    ),
+                                  ),
+                                  trailing: ElevatedButton.icon(
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('修復'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    onPressed: () async {
+                                      // ★★★ 再ダウンロードの確認ダイアログを表示 ★★★
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          title: const Text('モデルの再ダウンロード'),
+                                          content: const Text(
+                                            'モデルファイルを再ダウンロードして修復しますか？',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.of(
+                                                context,
+                                              ).pop(false),
+                                              child: const Text('キャンセル'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () => Navigator.of(
+                                                context,
+                                              ).pop(true),
+                                              child: const Text('再ダウンロード'),
+                                            ),
+                                          ],
                                         ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.of(
-                                              context,
-                                            ).pop(false),
-                                            child: const Text('キャンセル'),
-                                          ),
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.of(context).pop(true),
-                                            child: const Text('再ダウンロード'),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                    if (confirm == true) {
-                                      settings.downloadModel(selectedModel);
-                                    }
-                                  },
+                                      );
+                                      if (confirm == true) {
+                                        settings.downloadModel(selectedModel);
+                                      }
+                                    },
+                                  ),
                                 ),
                               ),
                             Padding(

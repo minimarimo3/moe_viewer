@@ -46,6 +46,17 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ハッシュ不一致通知用のエラーメッセージ（イベント的に使う）
+  String? _hashMismatchErrorMessage;
+  int _hashMismatchErrorVersion = 0;
+  String? get hashMismatchErrorMessage => _hashMismatchErrorMessage;
+  int get hashMismatchErrorVersion => _hashMismatchErrorVersion;
+  void _emitHashMismatchError(String message) {
+    _hashMismatchErrorMessage = message;
+    _hashMismatchErrorVersion++;
+    notifyListeners();
+  }
+
   String _currentAnalyzingFile = '';
   String get currentAnalyzingFile => _currentAnalyzingFile;
 
@@ -106,6 +117,15 @@ class SettingsProvider extends ChangeNotifier {
     _selectedModelId = modelId;
     await _settingsRepository.saveSelectedModel(modelId);
     notifyListeners();
+
+    // モデル選択後にハッシュチェックを実行
+    if (modelId != 'none') {
+      final selectedModelDef = availableModels.firstWhere(
+        (m) => m.id == modelId,
+        orElse: () => availableModels.first,
+      );
+      await checkModelStatus(selectedModelDef);
+    }
   }
 
   Future<void> setGridCrossAxisCount(int count) async {
@@ -195,6 +215,8 @@ class SettingsProvider extends ChangeNotifier {
       final modelHash = results[0];
       final labelsHash = results[1];
 
+      log("モデルファイルのハッシュ: $modelHash, 期待されるハッシュ: ${modelDef.modelFileHash}");
+      log("ラベルファイルのハッシュ: $labelsHash, 期待されるハッシュ: ${modelDef.labelFileHash}");
       if (modelHash == modelDef.modelFileHash &&
           labelsHash == modelDef.labelFileHash) {
         _isModelDownloaded = true;
@@ -202,9 +224,10 @@ class SettingsProvider extends ChangeNotifier {
       } else {
         _isModelDownloaded = true;
         _isModelCorrupted = true;
-        log(
-          "ファイルが破損しています。: 期待されるハッシュ: (${modelDef.modelFileHash}, ${modelDef.labelFileHash}), 実際のハッシュ: $modelHash, $labelsHash",
-        );
+        final errorMessage =
+            "モデルファイルのハッシュ値が一致しません。ファイルが破損している可能性があります。\n期待されるハッシュ: (${modelDef.modelFileHash}, ${modelDef.labelFileHash})\n実際のハッシュ: ($modelHash, $labelsHash)";
+        log(errorMessage);
+        _emitHashMismatchError(errorMessage);
       }
     } else {
       _isModelDownloaded = false;
