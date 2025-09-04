@@ -12,31 +12,14 @@ class FolderSetting {
   // MapからFolderSettingに変換するためのファクトリコンストラクタ
   factory FolderSetting.fromMap(Map<String, dynamic> map) {
     return FolderSetting(
-      path: map['path'] as String,
-      isEnabled: (map['isEnabled'] as bool?) ?? true,
-      isDeletable: (map['isDeletable'] as bool?) ?? true,
+      path: map['path'],
+      isEnabled: map['isEnabled'],
+      isDeletable: map['isDeletable'],
     );
   }
 
   // FolderSettingをMapに変換するメソッド
-  Map<String, dynamic> toMap() =>
-      {'path': path, 'isEnabled': isEnabled, 'isDeletable': isDeletable};
-
-  FolderSetting copyWith({String? path, bool? isEnabled, bool? isDeletable}) =>
-      FolderSetting(
-        path: path ?? this.path,
-        isEnabled: isEnabled ?? this.isEnabled,
-        isDeletable: isDeletable ?? this.isDeletable,
-      );
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is FolderSetting &&
-          other.path == path &&
-          other.isEnabled == isEnabled &&
-          other.isDeletable == isDeletable;
-
-  @override
-  int get hashCode => Object.hash(path, isEnabled, isDeletable);
+  Map<String, dynamic> toMap() {
+    return {'path': path, 'isEnabled': isEnabled, 'isDeletable': isDeletable};
+  }
 }

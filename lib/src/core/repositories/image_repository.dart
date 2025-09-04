@@ -68,6 +68,6 @@ class ImageRepository {
         }
       }
     }
-  return ImageList(displayItems: allDisplayItems, detailFiles: allDetailFiles);
+    return ImageList(allDisplayItems, allDetailFiles);
   }
 }
