@@ -28,11 +28,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
 
-    // TODO: これハルシネーションかもしれん
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Providerから現在の設定とAiServiceを取得
+      // Providerから現在の設定を取得
       final settings = context.read<SettingsProvider>();
-      final aiService = context.read<AiService>();
 
       // 現在選択されているモデルの定義を取得
       final selectedModelDef = availableModels.firstWhere(
@@ -40,11 +38,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         orElse: () => availableModels.first,
       );
 
-      // AiServiceに、このモデルで起動するように命令
-      await aiService.switchModel(selectedModelDef);
-
-      // 起動したモデルの状態（ダウンロード済みか、破損していないか）をチェック
-      await settings.checkModelStatus(selectedModelDef);
+      // モデルのダウンロード状況のみをチェック（ハッシュチェックは行わない）
+      await settings.checkModelDownloadStatus(selectedModelDef);
     });
 
     _checkFullAccessPermission();
@@ -401,6 +396,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ? const ListTile(
                           leading: CircularProgressIndicator(),
                           title: Text('モデルの整合性をチェック中...'),
+                        )
+                      : settings.isCheckingDownload
+                      ? const ListTile(
+                          leading: CircularProgressIndicator(),
+                          title: Text('モデルファイルを確認中...'),
                         )
                       : settings.isModelDownloaded
                       // --- ダウンロード済みの場合 ---

@@ -99,6 +99,9 @@ class SettingsProvider extends ChangeNotifier {
   bool _isCheckingHash = false;
   bool get isCheckingHash => _isCheckingHash;
 
+  bool _isCheckingDownload = false;
+  bool get isCheckingDownload => _isCheckingDownload;
+
   /// ファイルダウンロードのキャンセル用
   CancelToken? _cancelToken;
 
@@ -118,13 +121,13 @@ class SettingsProvider extends ChangeNotifier {
     await _settingsRepository.saveSelectedModel(modelId);
     notifyListeners();
 
-    // モデル選択後にハッシュチェックを実行
+    // モデル選択後にダウンロード状況のみをチェック（ハッシュチェックは解析開始時に実行）
     if (modelId != 'none') {
       final selectedModelDef = availableModels.firstWhere(
         (m) => m.id == modelId,
         orElse: () => availableModels.first,
       );
-      await checkModelStatus(selectedModelDef);
+      await checkModelDownloadStatus(selectedModelDef);
     }
   }
 
@@ -194,6 +197,28 @@ class SettingsProvider extends ChangeNotifier {
       _totalFileCount = analyzedCount;
     }
     _analyzedFileCount = analyzedCount;
+  }
+
+  /// モデルファイルのダウンロード状況のみをチェック（ハッシュ検証なし）
+  Future<void> checkModelDownloadStatus(AiModelDefinition modelDef) async {
+    _isCheckingDownload = true;
+    notifyListeners();
+
+    final modelPath = await _getModelPath(modelDef.modelFileName);
+    final labelsPath = await _getLabelsPath(modelDef.labelFileName);
+    final modelFile = File(modelPath);
+    final labelsFile = File(labelsPath);
+
+    if (await modelFile.exists() && await labelsFile.exists()) {
+      _isModelDownloaded = true;
+      // ハッシュチェックは行わないので、破損フラグはリセット
+      _isModelCorrupted = false;
+    } else {
+      _isModelDownloaded = false;
+      _isModelCorrupted = false;
+    }
+    _isCheckingDownload = false;
+    notifyListeners();
   }
 
   Future<void> checkModelStatus(AiModelDefinition modelDef) async {
@@ -343,7 +368,7 @@ class SettingsProvider extends ChangeNotifier {
       _isDownloading = false;
       notifyListeners();
     }
-    await checkModelStatus(modelDef);
+    await checkModelDownloadStatus(modelDef);
   }
 
   Future<String> _getModelPath(String fileName) async {
@@ -365,6 +390,10 @@ class SettingsProvider extends ChangeNotifier {
       orElse: () => availableModels.first,
     );
 
+    // 解析開始時にモデルをAiServiceに切り替え（ロード）
+    await aiService.switchModel(selectedModelDef);
+
+    // モデルの整合性をチェック
     await checkModelStatus(selectedModelDef);
     if (!_isModelDownloaded || _isModelCorrupted) {
       log("モデルが利用可能ではありません。ダウンロードまたは修復してください。");
