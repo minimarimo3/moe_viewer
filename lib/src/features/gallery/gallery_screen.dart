@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart'; // ★★★ SystemChromeのためにインポート ★★★
 import 'package:provider/provider.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
