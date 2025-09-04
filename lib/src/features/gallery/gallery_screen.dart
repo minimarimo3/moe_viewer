@@ -9,8 +9,7 @@ import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../settings/settings_screen.dart';
-import '../../core/providers/ui_settings_provider.dart';
-import '../../core/providers/folder_settings_provider.dart';
+import '../../core/providers/settings_provider.dart';
 import '../../core/repositories/image_repository.dart';
 import '../../core/services/database_helper.dart';
 import 'widgets/pie_menu_widget.dart';
@@ -122,7 +121,10 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
     _loadImages();
 
-    // PopScopeで戻る制御に移行（deprecated API からの置換）
+    // ルートポップ時に検索を閉じる
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ModalRoute.of(context)?.addScopedWillPopCallback(_onWillPop);
+    });
   }
 
   @override
@@ -135,6 +137,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     _searchDebounce?.cancel();
     _searchController.dispose();
     _removeSuggestionsOverlay();
+    ModalRoute.of(context)?.removeScopedWillPopCallback(_onWillPop);
     super.dispose();
   }
 
@@ -142,7 +145,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     // スクロール保存の頻度を抑える
     _debounce = Timer(const Duration(milliseconds: 300), () {
-      final settings = Provider.of<UiSettingsProvider>(context, listen: false);
+      final settings = Provider.of<SettingsProvider>(context, listen: false);
       if (!mounted) return;
 
       int index = 0;
@@ -174,12 +177,9 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       _status = LoadingStatus.loading;
     });
 
-    final folderProvider = Provider.of<FolderSettingsProvider>(
-      context,
-      listen: false,
-    );
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
     final imageList = await _imageRepository.getAllImages(
-      folderProvider.folders,
+      settings.folderSettings,
     );
 
     // サジェスト用タグを先読み
@@ -198,7 +198,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
     log('合計 ${imageList.displayItems.length} 個のアイテムが見つかりました（詳細画面用リストも準備完了）。');
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final settings = Provider.of<UiSettingsProvider>(context, listen: false);
+      final settings = Provider.of<SettingsProvider>(context, listen: false);
       final index = settings.lastScrollIndex;
       if (index > 0) {
         if (settings.gridCrossAxisCount > 1 &&
@@ -218,7 +218,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     Widget buildBody() {
-      final crossAxisCount = Provider.of<UiSettingsProvider>(
+      final crossAxisCount = Provider.of<SettingsProvider>(
         context,
       ).gridCrossAxisCount;
 
@@ -320,7 +320,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
+                      color: Colors.black.withOpacity(0.6),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
@@ -358,160 +358,148 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       }
     }
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        final ok = await _onWillPop();
-        if (ok && context.mounted) Navigator.of(context).maybePop();
+    return GalleryPieMenuWidget(
+      key: _pieMenuKey,
+      onMenuRequest: (item, globalPosition) {
+        // _handleLongPressから直接GlobalKey経由で呼び出すため、ここは空でOK
       },
-      child: GalleryPieMenuWidget(
-        key: _pieMenuKey,
-        onMenuRequest: (item, globalPosition) {
-          // _handleLongPressから直接GlobalKey経由で呼び出すため、ここは空でOK
-        },
-        child: Scaffold(
-          appBar: PreferredSize(
-            preferredSize: const Size.fromHeight(kToolbarHeight),
-            child: SizeTransition(
-              sizeFactor: _appBarAnimationController,
-              child: AppBar(
-                title: _isSearchMode
-                    ? FocusScope(
-                        child: Focus(
-                          onFocusChange: (has) {
-                            if (!has) {
-                              // 検索以外をタップしたら現在の結果で確定
-                              _commitSearch();
-                            }
-                          },
-                          child: TextField(
-                            controller: _searchController,
-                            autofocus: true,
-                            decoration: const InputDecoration(
-                              hintText: 'タグで検索（スペース区切りでAND）',
-                              border: InputBorder.none,
-                            ),
-                            textInputAction: TextInputAction.search,
-                            onChanged: _onSearchChanged,
-                            onSubmitted: (_) => _commitSearch(),
-                          ),
-                        ),
-                      )
-                    : const Text('Pixiv Viewer'),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.photo_album_outlined),
-                    tooltip: 'アルバム',
-                    onPressed: () async {
-                      _exitSearchMode();
-                      if (!mounted) return;
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const AlbumsScreen()),
-                      );
-                    },
-                  ),
-                  if (_isFilterActive)
-                    IconButton(
-                      icon: const Icon(Icons.playlist_add),
-                      tooltip: '検索結果をアルバムへ追加',
-                      onPressed: () async {
-                        // 現在の有効なリスト（フィルタ確定済み）をアルバムに一括追加
-                        final indices = _activeFilterIndices;
-                        if (indices.isEmpty) return;
-                        final paths = indices
-                            .map((i) => _imageFilesForDetail[i].path)
-                            .toList();
-                        final messenger = ScaffoldMessenger.of(context);
-                        final albumId = await _pickAlbumDialog();
-                        if (albumId == null) return;
-                        await DatabaseHelper.instance.addImagesToAlbum(
-                          albumId,
-                          paths,
-                        );
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text('${paths.length}件をアルバムに追加しました'),
-                          ),
-                        );
-                      },
-                    ),
-                  if (_isFilterActive && !_isSearchMode)
-                    IconButton(
-                      icon: const Icon(Icons.filter_alt_off),
-                      tooltip: '検索結果をクリア',
-                      onPressed: _clearCommittedFilter,
-                    ),
-                  if (_isSearchMode)
-                    IconButton(
-                      icon: const Icon(Icons.backspace),
-                      tooltip: '入力クリア',
-                      onPressed: () {
-                        _searchController.clear();
-                        _onSearchChanged('');
-                      },
-                    ),
-                  IconButton(
-                    icon: Icon(_isSearchMode ? Icons.close : Icons.search),
-                    tooltip: _isSearchMode ? '検索を閉じる' : 'タグ検索',
-                    onPressed: () {
-                      if (_isSearchMode) {
-                        _exitSearchMode();
-                      } else {
-                        setState(() {
-                          _isSearchMode = true;
-                          // 検索結果画面から開いた場合は前回のクエリを復元
-                          if (_isFilterActive &&
-                              (_lastCommittedQuery?.isNotEmpty ?? false)) {
-                            _searchController.text = _lastCommittedQuery!;
-                            _searchController.selection =
-                                TextSelection.fromPosition(
-                                  TextPosition(
-                                    offset: _searchController.text.length,
-                                  ),
-                                );
+      child: Scaffold(
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(kToolbarHeight),
+          child: SizeTransition(
+            sizeFactor: _appBarAnimationController,
+            child: AppBar(
+              title: _isSearchMode
+                  ? FocusScope(
+                      child: Focus(
+                        onFocusChange: (has) {
+                          if (!has) {
+                            // 検索以外をタップしたら現在の結果で確定
+                            _commitSearch();
                           }
-                          _updateSuggestions();
-                          _showSuggestionsOverlay();
-                        });
-                      }
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.shuffle),
-                    tooltip: '表示順をシャッフル',
-                    onPressed: () {
-                      _showShuffleConfirmationDialog();
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.settings_outlined),
-                    onPressed: () async {
-                      _exitSearchMode();
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SettingsScreen(),
+                        },
+                        child: TextField(
+                          controller: _searchController,
+                          autofocus: true,
+                          decoration: const InputDecoration(
+                            hintText: 'タグで検索（スペース区切りでAND）',
+                            border: InputBorder.none,
+                          ),
+                          textInputAction: TextInputAction.search,
+                          onChanged: _onSearchChanged,
+                          onSubmitted: (_) => _commitSearch(),
                         ),
+                      ),
+                    )
+                  : const Text('Pixiv Viewer'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.photo_album_outlined),
+                  tooltip: 'アルバム',
+                  onPressed: () async {
+                    _exitSearchMode();
+                    if (!mounted) return;
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AlbumsScreen()),
+                    );
+                  },
+                ),
+                if (_isFilterActive)
+                  IconButton(
+                    icon: const Icon(Icons.playlist_add),
+                    tooltip: '検索結果をアルバムへ追加',
+                    onPressed: () async {
+                      // 現在の有効なリスト（フィルタ確定済み）をアルバムに一括追加
+                      final indices = _activeFilterIndices;
+                      if (indices.isEmpty) return;
+                      final paths = indices
+                          .map((i) => _imageFilesForDetail[i].path)
+                          .toList();
+                      final albumId = await _pickAlbumDialog(context);
+                      if (albumId == null) return;
+                      await DatabaseHelper.instance.addImagesToAlbum(
+                        albumId,
+                        paths,
                       );
-                      _loadImages();
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('${paths.length}件をアルバムに追加しました')),
+                      );
                     },
                   ),
-                ],
-              ),
+                if (_isFilterActive && !_isSearchMode)
+                  IconButton(
+                    icon: const Icon(Icons.filter_alt_off),
+                    tooltip: '検索結果をクリア',
+                    onPressed: _clearCommittedFilter,
+                  ),
+                if (_isSearchMode)
+                  IconButton(
+                    icon: const Icon(Icons.backspace),
+                    tooltip: '入力クリア',
+                    onPressed: () {
+                      _searchController.clear();
+                      _onSearchChanged('');
+                    },
+                  ),
+                IconButton(
+                  icon: Icon(_isSearchMode ? Icons.close : Icons.search),
+                  tooltip: _isSearchMode ? '検索を閉じる' : 'タグ検索',
+                  onPressed: () {
+                    if (_isSearchMode) {
+                      _exitSearchMode();
+                    } else {
+                      setState(() {
+                        _isSearchMode = true;
+                        // 検索結果画面から開いた場合は前回のクエリを復元
+                        if (_isFilterActive &&
+                            (_lastCommittedQuery?.isNotEmpty ?? false)) {
+                          _searchController.text = _lastCommittedQuery!;
+                          _searchController
+                              .selection = TextSelection.fromPosition(
+                            TextPosition(offset: _searchController.text.length),
+                          );
+                        }
+                        _updateSuggestions();
+                        _showSuggestionsOverlay();
+                      });
+                    }
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.shuffle),
+                  tooltip: '表示順をシャッフル',
+                  onPressed: () {
+                    _showShuffleConfirmationDialog();
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () async {
+                    _exitSearchMode();
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SettingsScreen(),
+                      ),
+                    );
+                    _loadImages();
+                  },
+                ),
+              ],
             ),
           ),
-          body: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () {
-              if (_isSearchMode) {
-                FocusScope.of(context).unfocus();
-                _commitSearch();
-              }
-            },
-            child: Center(child: buildBody()),
-          ),
+        ),
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () {
+            if (_isSearchMode) {
+              FocusScope.of(context).unfocus();
+              _commitSearch();
+            }
+          },
+          child: Center(child: buildBody()),
         ),
       ),
     );
@@ -690,23 +678,16 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   }
 
   Future<void> _showShuffleConfirmationDialog() async {
-    // await 前に context 依存を取得
-    final messenger = ScaffoldMessenger.of(context);
-    final settings = Provider.of<UiSettingsProvider>(context, listen: false);
     final confirm = await GalleryShuffleUtils.showShuffleConfirmationDialog(
       context,
     );
 
-    if (!mounted) return;
     if (confirm == true) {
-      _shuffleImages(messenger: messenger, settings: settings);
+      _shuffleImages();
     }
   }
 
-  void _shuffleImages({
-    required ScaffoldMessengerState messenger,
-    required UiSettingsProvider settings,
-  }) {
+  void _shuffleImages() {
     // 新しいユーティリティを使用してシャッフル
     final result = GalleryShuffleUtils.shuffleItems(
       displayItems: _displayItems,
@@ -742,6 +723,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     }
 
     // しおりをリセット
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
     settings.setLastScrollIndex(0);
 
     // 表示を一番上に戻す
@@ -752,14 +734,13 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       _itemScrollController.jumpTo(index: 0);
     }
 
-    if (!mounted) return;
-    messenger.showSnackBar(const SnackBar(content: Text('表示順をシャッフルしました。')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('表示順をシャッフルしました。')));
   }
 
-  Future<int?> _pickAlbumDialog() async {
-    final navigator = Navigator.of(context);
+  Future<int?> _pickAlbumDialog(BuildContext context) async {
     final albums = await AlbumsService.instance.listAlbums();
-    if (!mounted) return null;
     return showDialog<int>(
       context: context,
       builder: (context) {
@@ -785,7 +766,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                       return ListTile(
                         leading: const Icon(Icons.photo_album_outlined),
                         title: Text(a.name),
-                        onTap: () => navigator.pop(a.id),
+                        onTap: () => Navigator.of(context).pop(a.id),
                       );
                     },
                   ),
@@ -800,7 +781,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
           ),
           actions: [
             TextButton(
-              onPressed: () => navigator.pop(),
+              onPressed: () => Navigator.of(context).pop(),
               child: const Text('キャンセル'),
             ),
             TextButton(
@@ -808,8 +789,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                 final name = controller.text.trim();
                 if (name.isEmpty) return;
                 final album = await AlbumsService.instance.createAlbum(name);
-                if (!mounted) return;
-                navigator.pop(album.id);
+                if (!context.mounted) return;
+                Navigator.of(context).pop(album.id);
               },
               child: const Text('作成して追加'),
             ),

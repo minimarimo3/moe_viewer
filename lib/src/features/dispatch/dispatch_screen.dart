@@ -1,8 +1,6 @@
 import '../gallery/gallery_screen.dart';
 import '../permission/permission_screen.dart';
-import '../../core/providers/ui_settings_provider.dart';
-import '../../core/providers/folder_settings_provider.dart';
-import '../../core/providers/model_provider.dart';
+import '../../core/providers/settings_provider.dart';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -23,10 +21,8 @@ class _DispatchScreenState extends State<DispatchScreen> {
   }
 
   Future<void> _dispatch() async {
-    final ui = Provider.of<UiSettingsProvider>(context, listen: false);
-    final folders = Provider.of<FolderSettingsProvider>(context, listen: false);
-    final model = Provider.of<ModelProvider>(context, listen: false);
-    await Future.wait([ui.load(), folders.load(), model.load()]);
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    await settings.init();
 
     // ここでは権限を要求せず、現在の状態だけを確認する
     final status = await Permission.photos.status;

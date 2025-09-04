@@ -10,22 +10,27 @@ class AlbumItem {
   });
 
   factory AlbumItem.fromRow(Map<String, dynamic> row) => AlbumItem(
-    path: row['path'] as String,
-    addedAt: DateTime.fromMillisecondsSinceEpoch(row['added_at'] as int),
-    position: switch (row['position']) {
-      final int v => v,
-      final num v => v.toInt(),
-      _ => 0,
-    },
-  );
+        path: row['path'] as String,
+        addedAt:
+            DateTime.fromMillisecondsSinceEpoch(row['added_at'] as int),
+        position: switch (row['position']) {
+          final int v => v,
+          final num v => v.toInt(),
+          _ => 0,
+        },
+      );
 
   Map<String, dynamic> toMap() => {
-    'path': path,
-    'added_at': addedAt.millisecondsSinceEpoch,
-    'position': position,
-  };
+        'path': path,
+        'added_at': addedAt.millisecondsSinceEpoch,
+        'position': position,
+      };
 
-  AlbumItem copyWith({String? path, DateTime? addedAt, int? position}) =>
+  AlbumItem copyWith({
+    String? path,
+    DateTime? addedAt,
+    int? position,
+  }) =>
       AlbumItem(
         path: path ?? this.path,
         addedAt: addedAt ?? this.addedAt,
