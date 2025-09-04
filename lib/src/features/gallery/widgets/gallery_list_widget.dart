@@ -56,8 +56,7 @@ class GalleryListWidget extends StatelessWidget {
         child: RepaintBoundary(
           child: AssetEntityImage(
             item,
-            // isOriginal: true, // 高画質を維持
-            isOriginal: false, // 高画質を維持
+            isOriginal: true, // 高画質を維持
             fit: BoxFit.cover,
           ),
         ),
