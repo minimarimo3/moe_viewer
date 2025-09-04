@@ -363,7 +363,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: const Text('AIモデルを選択'),
                 trailing: DropdownButton<String>(
                   value: settings.selectedModelId,
-                  onChanged: settings.isDownloading
+                  onChanged: (settings.isDownloading || settings.isAnalyzing)
                       ? null
                       : (String? newModelId) async {
                           log("モデル変更のドロップダウンが呼ばれました");
