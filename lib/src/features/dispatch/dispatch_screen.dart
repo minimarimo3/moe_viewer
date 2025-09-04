@@ -21,23 +21,40 @@ class _DispatchScreenState extends State<DispatchScreen> {
   }
 
   Future<void> _dispatch() async {
-    final settings = Provider.of<SettingsProvider>(context, listen: false);
-    await settings.init();
+    try {
+      final settings = Provider.of<SettingsProvider>(context, listen: false);
 
-    // ここでは権限を要求せず、現在の状態だけを確認する
-    final status = await Permission.photos.status;
+      // 設定の初期化を非同期で開始（UIをブロックしない）
+      final initFuture = settings.init();
 
-    if (!mounted) return;
+      // 権限チェックを並行して実行
+      final statusFuture = Permission.photos.status;
 
-    if (status.isGranted || status.isLimited) {
-      // 権限があればメイン画面へ
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => const MyHomePage(title: "Moe Viewer Home Page"),
-        ),
-      );
-    } else {
-      // 権限がなければ権限要求画面へ
+      // 両方の処理が完了するまで待機
+      final results = await Future.wait([initFuture, statusFuture]);
+      final status = results[1] as PermissionStatus;
+
+      if (!mounted) return;
+
+      if (status.isGranted || status.isLimited) {
+        // 権限があればメイン画面へ
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const MyHomePage(title: "Moe Viewer Home Page"),
+          ),
+        );
+      } else {
+        // 権限がなければ権限要求画面へ
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const PermissionScreen()),
+        );
+      }
+    } catch (e) {
+      // エラーが発生した場合でもアプリを停止させない
+      print('Dispatch error: $e');
+      if (!mounted) return;
+
+      // エラーが発生した場合は権限画面へ
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const PermissionScreen()),
       );
@@ -47,6 +64,17 @@ class _DispatchScreenState extends State<DispatchScreen> {
   @override
   Widget build(BuildContext context) {
     // チェック中はローディング画面を表示
-    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('アプリを準備中...', style: TextStyle(fontSize: 16)),
+          ],
+        ),
+      ),
+    );
   }
 }

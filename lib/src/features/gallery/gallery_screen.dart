@@ -179,38 +179,67 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     });
 
     final settings = Provider.of<SettingsProvider>(context, listen: false);
-    final imageList = await _imageRepository.getAllImages(
-      settings.folderSettings,
-    );
 
-    // サジェスト用タグを先読み
-    _allTags = await _db.getAllTags();
+    try {
+      // タグの先読みを非同期で実行（UIをブロックしない）
+      _loadTagsAsync();
 
-    setState(() {
-      _displayItems = imageList.displayItems;
-      _imageFilesForDetail = imageList.detailFiles;
-      _status = _displayItems.isEmpty
-          ? LoadingStatus.empty
-          : LoadingStatus.completed;
-      // 通常モードに戻す（ここでは直接代入して二重setStateを避ける）
-      _isSearchMode = false;
-      _filteredDetailIndices = [];
-    });
+      final imageList = await _imageRepository.getAllImages(
+        settings.folderSettings,
+      );
 
-    log('合計 ${imageList.displayItems.length} 個のアイテムが見つかりました（詳細画面用リストも準備完了）。');
+      if (!mounted) return; // ウィジェットが破棄されている場合は処理を停止
+
+      setState(() {
+        _displayItems = imageList.displayItems;
+        _imageFilesForDetail = imageList.detailFiles;
+        _status = _displayItems.isEmpty
+            ? LoadingStatus.empty
+            : LoadingStatus.completed;
+        // 通常モードに戻す（ここでは直接代入して二重setStateを避ける）
+        _isSearchMode = false;
+        _filteredDetailIndices = [];
+      });
+
+      log('合計 ${imageList.displayItems.length} 個のアイテムが見つかりました（詳細画面用リストも準備完了）。');
+
+      // スクロール位置の復元も非同期で実行
+      _restoreScrollPositionAsync(settings);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _status = LoadingStatus.errorUnknown;
+      });
+      log('画像読み込みエラー: $e');
+    }
+  }
+
+  void _loadTagsAsync() async {
+    try {
+      _allTags = await _db.getAllTags();
+    } catch (e) {
+      log('タグ読み込みエラー: $e');
+    }
+  }
+
+  void _restoreScrollPositionAsync(SettingsProvider settings) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final settings = Provider.of<SettingsProvider>(context, listen: false);
+      if (!mounted) return;
       final index = settings.lastScrollIndex;
-      if (index > 0) {
-        if (settings.gridCrossAxisCount > 1 &&
-            _autoScrollController.hasClients) {
-          _autoScrollController.scrollToIndex(
-            index,
-            preferPosition: AutoScrollPosition.begin,
-          );
-        } else if (settings.gridCrossAxisCount == 1 &&
-            _itemScrollController.isAttached) {
-          _itemScrollController.jumpTo(index: index);
+      if (index > 0 && index < _displayItems.length) {
+        try {
+          if (settings.gridCrossAxisCount > 1 &&
+              _autoScrollController.hasClients) {
+            _autoScrollController.scrollToIndex(
+              index,
+              preferPosition: AutoScrollPosition.begin,
+            );
+          } else if (settings.gridCrossAxisCount == 1 &&
+              _itemScrollController.isAttached) {
+            _itemScrollController.jumpTo(index: index);
+          }
+        } catch (e) {
+          log('スクロール位置復元エラー: $e');
         }
       }
     });

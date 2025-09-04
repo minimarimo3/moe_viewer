@@ -106,14 +106,29 @@ class SettingsProvider extends ChangeNotifier {
   CancelToken? _cancelToken;
 
   Future<void> init() async {
+    // 軽量な設定のみを先に読み込み、UIをブロックしない
     _selectedModelId = await _settingsRepository.loadSelectedModel();
     _gridCrossAxisCount = await _settingsRepository.loadGridCrossAxisCount();
     _themeMode = await _settingsRepository.loadThemeMode();
     _lastScrollIndex = await _settingsRepository.loadLastScrollIndex();
     _folderSettings = await _settingsRepository.loadFolderSettings();
     _nsfwFilterEnabled = await _settingsRepository.loadNsfwFilter();
-    await updateOverallProgress();
+
+    // UIをすぐに更新
     notifyListeners();
+
+    // 重い処理は非同期で実行（UIをブロックしない）
+    _initializeHeavyOperations();
+  }
+
+  void _initializeHeavyOperations() async {
+    try {
+      await updateOverallProgress();
+      notifyListeners();
+    } catch (e) {
+      // エラーが発生してもアプリを止めない
+      print('Error during heavy initialization: $e');
+    }
   }
 
   Future<void> setSelectedModel(String modelId) async {
@@ -469,6 +484,8 @@ class SettingsProvider extends ChangeNotifier {
 
   Future<void> _saveFolders() async {
     await _settingsRepository.saveFolderSettings(_folderSettings);
+    // フォルダ設定が変更されたらImageRepositoryのキャッシュをクリア
+    _imageRepository.clearCache();
     notifyListeners();
   }
 
@@ -477,20 +494,32 @@ class SettingsProvider extends ChangeNotifier {
       _folderSettings.add(FolderSetting(path: newPath));
       await _saveFolders();
     }
-    await updateOverallProgress();
+    // 重い処理は非同期で実行
+    _updateProgressAsync();
   }
 
   Future<void> removeFolder(String path) async {
     _folderSettings.removeWhere((f) => f.path == path);
     await _saveFolders();
-    await updateOverallProgress();
+    // 重い処理は非同期で実行
+    _updateProgressAsync();
   }
 
   Future<void> toggleFolderEnabled(String path) async {
     final folder = _folderSettings.firstWhere((f) => f.path == path);
     folder.isEnabled = !folder.isEnabled;
     await _saveFolders();
-    await updateOverallProgress();
+    // 重い処理は非同期で実行
+    _updateProgressAsync();
+  }
+
+  void _updateProgressAsync() async {
+    try {
+      await updateOverallProgress();
+      notifyListeners();
+    } catch (e) {
+      print('Progress update error: $e');
+    }
   }
 
   Future<void> setNsfwFilter(bool isEnabled) async {

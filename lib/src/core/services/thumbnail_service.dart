@@ -17,27 +17,50 @@ Future<Uint8List> _generateThumbnail(ThumbnailRequest request) async {
   final file = File(filePath);
 
   log('Generating thumbnail for: $filePath');
-  final bytes = await file.readAsBytes();
-  final image = img.decodeImage(bytes);
 
-  // TODO: これなんとかしたいよなぁ
-  if (image == null) throw Exception('Failed to decode image');
-  /*
-  if (image == null) {
-    // デバッグ用にどのファイルで失敗したかログを残すと親切
-    print('画像のデコードに失敗しました: $filePath');
-    // 例外を投げる代わりに、元のバイトデータをそのまま返す
-    return bytes;
+  try {
+    // ファイルサイズをチェックして大きなファイルは処理をスキップ
+    final fileStat = await file.stat();
+    if (fileStat.size > 50 * 1024 * 1024) {
+      // 50MB以上の場合はスキップ
+      throw Exception('File too large: ${fileStat.size} bytes');
+    }
+
+    final bytes = await file.readAsBytes();
+    final image = img.decodeImage(bytes);
+
+    if (image == null) {
+      throw Exception('Failed to decode image');
+    }
+
+    // メモリ効率のために最大サイズを制限
+    final maxDimension = 1024;
+    int targetWidth = request.width;
+    int? targetHeight = request.height;
+
+    if (targetWidth > maxDimension) {
+      final scale = maxDimension / targetWidth;
+      targetWidth = maxDimension;
+      if (targetHeight != null) {
+        targetHeight = (targetHeight * scale).round();
+      }
+    }
+
+    final thumbnail = img.copyResize(
+      image,
+      width: targetWidth,
+      height: targetHeight,
+      interpolation: img.Interpolation.linear, // 高品質な補間を指定
+    );
+
+    final result = Uint8List.fromList(img.encodeJpg(thumbnail, quality: 85));
+
+    return result;
+  } catch (e) {
+    log('Thumbnail generation failed for $filePath: $e');
+    // エラーの場合は空のバイト配列を返す
+    return Uint8List(0);
   }
-  */
-  // if (image == null) return Uint8List.fromList(bytes);
-
-  final thumbnail = img.copyResize(
-    image,
-    width: request.width,
-    height: request.height,
-  );
-  return Uint8List.fromList(img.encodeJpg(thumbnail, quality: 90));
 }
 
 // compute関数を使って、generateThumbnailをバックグラウンドで実行する
