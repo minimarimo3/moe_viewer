@@ -477,7 +477,6 @@ class _DetailScreenState extends State<DetailScreen>
   void dispose() {
     _pageController.dispose();
     // ★★★ この画面を離れるときに、必ずシステムUIを元に戻す
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _animationController.dispose(); // ★★★ disposeを追加
     _transformationController.dispose(); // ★★★ disposeを追加
     super.dispose();
