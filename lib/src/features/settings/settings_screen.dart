@@ -21,6 +21,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasFullAccess = false;
+  int _shownDownloadErrorVersion = 0; // SnackBar多重表示防止
 
   @override
   void initState() {
@@ -105,6 +106,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     return Consumer<SettingsProvider>(
       builder: (context, settings, child) {
+        // ダウンロード失敗時のユーザー通知（SnackBar）
+        if (settings.downloadErrorMessage != null &&
+            settings.downloadErrorVersion != _shownDownloadErrorVersion) {
+          _shownDownloadErrorVersion = settings.downloadErrorVersion;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final msg = settings.downloadErrorMessage!;
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(msg),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          });
+        }
         final selectedModel = availableModels.firstWhere(
           (m) => m.id == settings.selectedModelId,
           orElse: () => availableModels.first,

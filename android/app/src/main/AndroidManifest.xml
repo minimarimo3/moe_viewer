@@ -9,6 +9,8 @@
         を使うなら↓が必要。
     -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- 外部との通信に必要-->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!--Webブラウザを開くよってのと共有するよってやつ-->
     <queries>
@@ -26,7 +28,8 @@
         android:label="moe_viewer"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true">
+        android:requestLegacyExternalStorage="true"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true"

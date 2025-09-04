@@ -35,6 +35,17 @@ class SettingsProvider extends ChangeNotifier {
   bool _isDownloading = false;
   bool get isDownloading => _isDownloading;
 
+  // ダウンロード失敗などユーザー通知用のエラーメッセージ（イベント的に使う）
+  String? _downloadErrorMessage;
+  int _downloadErrorVersion = 0; // 同一メッセージの多重表示防止用の連番
+  String? get downloadErrorMessage => _downloadErrorMessage;
+  int get downloadErrorVersion => _downloadErrorVersion;
+  void _emitDownloadError(String message) {
+    _downloadErrorMessage = message;
+    _downloadErrorVersion++;
+    notifyListeners();
+  }
+
   String _currentAnalyzingFile = '';
   String get currentAnalyzingFile => _currentAnalyzingFile;
 
@@ -234,6 +245,7 @@ class SettingsProvider extends ChangeNotifier {
       log('ファイルの総サイズ: $totalBytes bytes');
     } catch (e) {
       log('ファイルの総サイズ取得に失敗: $e');
+      _emitDownloadError('ファイルサイズの取得に失敗しました。ネットワークやURLをご確認ください。\n$e');
       _isDownloading = false;
       notifyListeners();
       return;
@@ -300,6 +312,7 @@ class SettingsProvider extends ChangeNotifier {
         log('ユーザーがダウンロードをキャンセルしました。');
       } else {
         log("ダウンロードエラー: $e");
+        _emitDownloadError('AIモデルのダウンロードに失敗しました。通信状況をご確認のうえ再試行してください。');
       }
       // if (await File(modelPath).exists()) { await File(modelPath).delete(); }
       // if (await File(labelsPath).exists()) { await File(labelsPath).delete(); }
