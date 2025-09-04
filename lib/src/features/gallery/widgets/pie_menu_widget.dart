@@ -119,10 +119,11 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
                     final id = _currentPixivId;
                     if (id == null) return;
                     final uri = Uri.parse('https://www.pixiv.net/artworks/$id');
+                    final messenger = ScaffoldMessenger.of(context);
                     if (await canLaunchUrl(uri)) {
                       await launchUrl(uri);
                     } else if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      messenger.showSnackBar(
                         const SnackBar(content: Text('リンクを開けませんでした')),
                       );
                     }
@@ -132,12 +133,13 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
               PieAction(
                 tooltip: const Text('お気に入りを切替'),
                 onSelect: () async {
+                  final messenger = ScaffoldMessenger.of(context);
                   final path = _currentTargetPath;
                   if (path == null) return;
                   final newState = await FavoritesService.instance
                       .toggleFavorite(path);
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     SnackBar(
                       content: Text(newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました'),
                     ),
@@ -148,15 +150,16 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
               PieAction(
                 tooltip: const Text('アルバムに追加'),
                 onSelect: () async {
+                  final messenger = ScaffoldMessenger.of(context);
                   final path = _currentTargetPath;
                   if (path == null) return;
-                  final albumId = await _pickAlbumDialog(context);
+                  final albumId = await _pickAlbumDialog();
                   if (albumId == null) return;
                   await AlbumsService.instance.addPaths(albumId, [path]);
                   if (!mounted) return;
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('アルバムに追加しました')));
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('アルバムに追加しました')),
+                  );
                 },
                 child: const Icon(Icons.playlist_add),
               ),
@@ -167,7 +170,8 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
                     final path = _currentTargetPath;
                     final aid = widget.albumId;
                     if (path == null || aid == null) return;
-                    // 確認ダイアログ
+                    // 確認ダイアログ（先にMessengerを取得して async ギャップ後の context 使用を避ける）
+                    final messenger = ScaffoldMessenger.of(context);
                     final confirmed = await showDialog<bool>(
                       context: context,
                       builder: (_) => AlertDialog(
@@ -188,7 +192,7 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
                     if (confirmed != true) return;
                     await AlbumsService.instance.removePath(aid, path);
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       const SnackBar(content: Text('アルバムから削除しました')),
                     );
                     // 親画面を更新
@@ -206,8 +210,11 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
     );
   }
 
-  Future<int?> _pickAlbumDialog(BuildContext context) async {
+  Future<int?> _pickAlbumDialog() async {
+    // await前に依存を取得
+    final navigator = Navigator.of(context);
     final albums = await AlbumsService.instance.listAlbums();
+    if (!mounted) return null;
     return showDialog<int>(
       context: context,
       builder: (context) {
@@ -233,7 +240,7 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
                       return ListTile(
                         leading: const Icon(Icons.photo_album_outlined),
                         title: Text(a.name),
-                        onTap: () => Navigator.of(context).pop(a.id),
+                        onTap: () => navigator.pop(a.id),
                       );
                     },
                   ),
@@ -248,16 +255,17 @@ class GalleryPieMenuWidgetState extends State<GalleryPieMenuWidget> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => navigator.pop(),
               child: const Text('キャンセル'),
             ),
             TextButton(
               onPressed: () async {
                 final name = controller.text.trim();
                 if (name.isEmpty) return;
+                final navigator = Navigator.of(context);
                 final album = await AlbumsService.instance.createAlbum(name);
-                if (!context.mounted) return;
-                Navigator.of(context).pop(album.id);
+                if (!mounted) return;
+                navigator.pop(album.id);
               },
               child: const Text('作成して追加'),
             ),

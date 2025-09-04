@@ -19,8 +19,11 @@ class FolderSetting {
   }
 
   // FolderSettingをMapに変換するメソッド
-  Map<String, dynamic> toMap() =>
-      {'path': path, 'isEnabled': isEnabled, 'isDeletable': isDeletable};
+  Map<String, dynamic> toMap() => {
+    'path': path,
+    'isEnabled': isEnabled,
+    'isDeletable': isDeletable,
+  };
 
   FolderSetting copyWith({String? path, bool? isEnabled, bool? isDeletable}) =>
       FolderSetting(

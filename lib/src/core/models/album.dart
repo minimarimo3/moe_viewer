@@ -12,19 +12,18 @@ class Album {
   });
 
   factory Album.fromRow(Map<String, dynamic> row) => Album(
-        id: row['id'] as int,
-        name: row['name'] as String,
-        createdAt:
-            DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
-        sortMode: (row['sort_mode'] as String?) ?? 'added_desc',
-      );
+    id: row['id'] as int,
+    name: row['name'] as String,
+    createdAt: DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
+    sortMode: (row['sort_mode'] as String?) ?? 'added_desc',
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'name': name,
-        'created_at': createdAt.millisecondsSinceEpoch,
-        'sort_mode': sortMode,
-      };
+    'id': id,
+    'name': name,
+    'created_at': createdAt.millisecondsSinceEpoch,
+    'sort_mode': sortMode,
+  };
 
   Album copyWith({
     int? id,

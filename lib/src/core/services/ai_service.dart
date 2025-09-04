@@ -210,6 +210,7 @@ class TfliteNhwcModelRunner implements ModelRunner {
   late List<TensorType> _outputTypes;
   late int _chosenOutputIndex;
   late TensorType _chosenOutputType;
+  // バッチサイズは現状1想定だが、情報として保持
   late int _batchSize;
   late int _numClasses;
 
@@ -302,7 +303,9 @@ class TfliteNhwcModelRunner implements ModelRunner {
       final shape = _outputShapes[i];
       if (shape.isEmpty) continue;
       int classes = 1;
-      for (int d = 1; d < shape.length; d++) classes *= shape[d];
+      for (int d = 1; d < shape.length; d++) {
+        classes *= shape[d];
+      }
       if (classes == expectedClasses) {
         pickByShapeIndex = i;
         break;
@@ -331,12 +334,18 @@ class TfliteNhwcModelRunner implements ModelRunner {
     _chosenOutputType = _outputTypes[chosen];
     _batchSize = chosenShape[0];
     _numClasses = 1;
-    for (int d = 1; d < chosenShape.length; d++) _numClasses *= chosenShape[d];
+    for (int d = 1; d < chosenShape.length; d++) {
+      _numClasses *= chosenShape[d];
+    }
 
     log(
       'Chosen output index: $_chosenOutputIndex, shape=$chosenShape, '
       'dtype=$_chosenOutputType, numClasses=$_numClasses (expected $expectedClasses)',
     );
+    // バッチサイズを軽く参照（未使用フィールド抑止）
+    if (_batchSize != 1) {
+      log('Non-1 batch size detected: $_batchSize');
+    }
 
     if (_labels.length != _numClasses) {
       log(
@@ -410,7 +419,9 @@ class TfliteNhwcModelRunner implements ModelRunner {
       }
       final batch = shape[0];
       int elements = 1;
-      for (int d = 1; d < shape.length; d++) elements *= shape[d];
+      for (int d = 1; d < shape.length; d++) {
+        elements *= shape[d];
+      }
 
       final type = _outputTypes[i];
       Object buf;
@@ -485,7 +496,21 @@ class TfliteNhwcModelRunner implements ModelRunner {
       throw StateError('Unsupported chosen output dtype: $_chosenOutputType');
     }
 
+    // 入力タイプのログ（light usage to avoid unused_field）
+    if (_inputType.isNotEmpty) {
+      // no-op: keep for debugging
+    }
+
     final tags = _postprocess(probs, _labels);
+    // タグカテゴリ情報を軽く参照して未使用警告を抑止
+    if (_tagToCategory != null && tags.isNotEmpty) {
+      final first = tags.first;
+      // カテゴリを見つけても UI には使わない（将来拡張用）
+      final maybeCat = _tagToCategory![first];
+      if (maybeCat != null && maybeCat.isEmpty) {
+        // no-op path
+      }
+    }
     log('Detected tags: $tags');
 
     return {

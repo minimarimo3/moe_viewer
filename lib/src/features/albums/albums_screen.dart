@@ -6,7 +6,7 @@ import '../../core/services/albums_service.dart';
 import '../gallery/widgets/gallery_grid_widget.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import '../gallery/widgets/pie_menu_widget.dart';
-import '../../core/providers/settings_provider.dart';
+import '../../core/providers/ui_settings_provider.dart';
 import 'package:provider/provider.dart';
 import '../detail/detail_screen.dart';
 import '../../common_widgets/file_thumbnail.dart';
@@ -47,16 +47,16 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
           var selected = initial;
           return SimpleDialog(
             title: const Text('並び替え'),
-            children: modes.entries
-                .map(
-                  (e) => RadioListTile<String>(
-                    value: e.key,
-                    groupValue: selected,
-                    onChanged: (v) => Navigator.pop(context, v),
-                    title: Text(e.value),
-                  ),
-                )
-                .toList(),
+            children: modes.entries.map((e) {
+              final isSelected = e.key == selected;
+              return ListTile(
+                title: Text(e.value),
+                leading: isSelected
+                    ? const Icon(Icons.check_circle, color: Colors.blue)
+                    : const Icon(Icons.circle_outlined),
+                onTap: () => Navigator.pop(context, e.key),
+              );
+            }).toList(),
           );
         },
       ),
@@ -295,7 +295,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final crossAxisCount = Provider.of<SettingsProvider>(
+    final crossAxisCount = Provider.of<UiSettingsProvider>(
       context,
     ).gridCrossAxisCount;
     return Scaffold(
@@ -391,6 +391,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       floatingActionButton: _reorderUIActive
           ? FloatingActionButton.extended(
               onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
                 if (!_reorderDirty) {
                   setState(() {
                     _reorderUIActive = false; // 変更なしならそのまま終了
@@ -403,19 +404,17 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                     widget.album.id,
                     paths,
                   );
-                  if (!mounted) return;
                   setState(() {
                     _reorderUIActive = false;
                     _reorderDirty = false;
                   });
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('並び順を保存しました')));
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('並び順を保存しました')),
+                  );
                 } catch (e) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('保存に失敗しました')));
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('保存に失敗しました')),
+                  );
                 }
               },
               icon: const Icon(Icons.check),
@@ -454,16 +453,16 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       context: context,
       builder: (_) => SimpleDialog(
         title: const Text('並び替え'),
-        children: modes.entries
-            .map(
-              (e) => RadioListTile<String>(
-                value: e.key,
-                groupValue: _sortMode,
-                onChanged: (v) => Navigator.pop(context, v),
-                title: Text(e.value),
-              ),
-            )
-            .toList(),
+        children: modes.entries.map((e) {
+          final isSelected = e.key == _sortMode;
+          return ListTile(
+            title: Text(e.value),
+            leading: isSelected
+                ? const Icon(Icons.check_circle, color: Colors.blue)
+                : const Icon(Icons.circle_outlined),
+            onTap: () => Navigator.pop(context, e.key),
+          );
+        }).toList(),
       ),
     );
   }

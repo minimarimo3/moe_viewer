@@ -8,6 +8,14 @@
 			"args": [],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "Flutter run (debug)",
+			"type": "shell",
+			"command": "flutter --no-version-check run -d macos -v",
+			"args": [],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }
