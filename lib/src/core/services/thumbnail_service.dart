@@ -53,7 +53,9 @@ Future<Uint8List> _generateThumbnail(ThumbnailRequest request) async {
       interpolation: img.Interpolation.linear, // 高品質な補間を指定
     );
 
-    final result = Uint8List.fromList(img.encodeJpg(thumbnail, quality: 85));
+    final result = Uint8List.fromList(
+      img.encodeJpg(thumbnail, quality: 90),
+    ); // 高品質を維持
 
     return result;
   } catch (e) {

@@ -7,13 +7,12 @@ import '../models/folder_setting.dart';
 import '../models/image_list.dart';
 
 class ImageRepository {
-  static const int _batchSize = 100; // バッチサイズを小さくして高速化
+  static const int _batchSize = 200; // バッチサイズを増やして効率化
 
   // キャッシュ用
   List<AssetPathEntity>? _cachedAlbums;
   Map<String, AssetPathEntity>? _cachedAlbumMap;
   List<String>? _cachedDirectScanPaths;
-
   Future<ImageList> getAllImages(List<FolderSetting> folderSettings) async {
     final enabledFolders = folderSettings.where((f) => f.isEnabled).toList();
     final selectedPaths = enabledFolders.map((f) => f.path).toList();
@@ -61,7 +60,9 @@ class ImageRepository {
 
           // UIの反応性を保つために小さな遅延を追加
           if (start + _batchSize < totalCount) {
-            await Future.delayed(const Duration(milliseconds: 1));
+            await Future.delayed(
+              const Duration(microseconds: 100),
+            ); // マイクロ秒に変更して高速化
           }
         }
       } else if (hasFullAccess && !_cachedDirectScanPaths!.contains(path)) {
@@ -109,7 +110,9 @@ class ImageRepository {
               _addBatchToLists(entities, allDisplayItems, allDetailFiles);
               entities.clear();
               // UIの反応性を保つために小さな遅延を追加
-              await Future.delayed(const Duration(milliseconds: 1));
+              await Future.delayed(
+                const Duration(microseconds: 100),
+              ); // マイクロ秒に変更して高速化
             }
           }
         }

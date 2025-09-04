@@ -56,9 +56,9 @@ class GalleryListWidget extends StatelessWidget {
         child: RepaintBoundary(
           child: AssetEntityImage(
             item,
-            isOriginal: false, // サムネイルを使用してパフォーマンス向上
+            // isOriginal: true, // 高画質を維持
+            isOriginal: false, // 高画質を維持
             fit: BoxFit.cover,
-            thumbnailSize: const ThumbnailSize.square(400), // サムネイルサイズを制限
           ),
         ),
       );
@@ -77,7 +77,7 @@ class GalleryListWidget extends StatelessWidget {
                 child: Image.file(
                   item,
                   fit: BoxFit.cover,
-                  cacheWidth: 400, // キャッシュサイズを制限してメモリ使用量を削減
+                  // cacheWidthを削除して高画質を維持
                   errorBuilder: (context, error, stackTrace) {
                     return Container(
                       height: 200,
@@ -120,7 +120,7 @@ class GalleryListWidget extends StatelessWidget {
       itemScrollController: itemScrollController,
       itemPositionsListener: itemPositionsListener,
       itemCount: displayItems.length,
-      addAutomaticKeepAlives: false, // メモリ使用量を削減
+      addAutomaticKeepAlives: true, // ビューポート外のアイテムをキャッシュして滑らかなスクロール
       addRepaintBoundaries: false, // RepaintBoundaryを手動で制御
       itemBuilder: (context, index) {
         final item = displayItems[index];
