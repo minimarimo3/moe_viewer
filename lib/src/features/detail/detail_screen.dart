@@ -77,76 +77,113 @@ class _DetailScreenState extends State<DetailScreen>
 
     if (!mounted) return;
 
-    // 画面下からスライドアップするパネル（ModalBottomSheet）を表示
+    // 画面下からスライドアップするパネル（DraggableScrollableSheet を内包した ModalBottomSheet）を表示
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return Container(
-          // padding: const EdgeInsets.all(16.0),
-          padding: EdgeInsets.only(
-            top: 16.0,
-            left: 8.0,
-            right: 8.0,
-            // 下の余白に、システムのUI分(ナビゲーションバーの高さ)を追加する
-            bottom: 16.0 + MediaQuery.of(context).viewPadding.bottom,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const Text(
-                '画像の詳細',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.4,
+          minChildSize: 0.2,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).canvasColor,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16.0),
+                ),
               ),
-              const Divider(),
-              if (tags != null && tags.isNotEmpty)
-                ListTile(
-                  leading: const Icon(Icons.psychology_outlined),
-                  title: const Text('AIによる解析タグ'),
-                  // Wrapウィジェットでタグを自動で折り返し表示
-                  subtitle: Wrap(
-                    spacing: 6.0,
-                    runSpacing: 4.0,
-                    children: tags
-                        .map(
-                          (tag) => Chip(
-                            label: Text(tag),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4.0,
-                              vertical: 0,
-                            ),
-                            labelStyle: const TextStyle(fontSize: 12),
-                          ),
-                        )
-                        .toList(),
+              padding: EdgeInsets.only(
+                top: 16.0,
+                left: 8.0,
+                right: 8.0,
+                bottom: 16.0 + bottomPadding,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ヘッダのつまみ
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 8.0),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[400],
+                        borderRadius: BorderRadius.circular(2.0),
+                      ),
+                    ),
                   ),
-                ),
-              /*
-              ListTile(
-                leading: Icon(Icons.photo_size_select_actual_outlined),
-                title: Text('解像度: $dimensions'),
+                  const Text(
+                    '画像の詳細',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const Divider(),
+                  // 本文部分はスクロールさせるため ListView を使う（DraggableScrollableSheet の controller を利用）
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      children: <Widget>[
+                        if (tags != null && tags.isNotEmpty)
+                          ListTile(
+                            leading: const Icon(Icons.psychology_outlined),
+                            title: const Text('AIによる解析タグ'),
+                            subtitle: Wrap(
+                              spacing: 6.0,
+                              runSpacing: 4.0,
+                              children: tags
+                                  .map(
+                                    (tag) => Chip(
+                                      label: Text(tag),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4.0,
+                                        vertical: 0,
+                                      ),
+                                      labelStyle: const TextStyle(fontSize: 12),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ),
+                        /*
+                        ListTile(
+                          leading: Icon(Icons.photo_size_select_actual_outlined),
+                          title: Text('解像度: $dimensions'),
+                        ),
+                        ListTile(
+                          leading: Icon(Icons.sd_storage_outlined),
+                          title: Text('ファイルサイズ: $sizeFormatted'),
+                        ),
+                        */
+                        ListTile(
+                          leading: const Icon(Icons.folder_outlined),
+                          title: const Text('ファイルパス'),
+                          subtitle: Text(imageFile.path),
+                        ),
+                        if (pixivId != null)
+                          ListTile(
+                            leading: const Icon(Icons.open_in_new),
+                            title: const Text('Pixivで作品を見る'),
+                            subtitle: Text('ID: $pixivId'),
+                            onTap: () {
+                              _launchURL(
+                                'https://www.pixiv.net/artworks/$pixivId',
+                              );
+                            },
+                          ),
+                        // 余白を入れて下部のメニューや画面が見切れないようにする
+                        SizedBox(height: 8.0 + bottomPadding),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              ListTile(
-                leading: Icon(Icons.sd_storage_outlined),
-                title: Text('ファイルサイズ: $sizeFormatted'),
-              ),
-              */
-              ListTile(
-                leading: Icon(Icons.folder_outlined),
-                title: Text('ファイルパス'),
-                subtitle: Text(imageFile.path),
-              ),
-              if (pixivId != null)
-                ListTile(
-                  leading: const Icon(Icons.open_in_new),
-                  title: const Text('Pixivで作品を見る'),
-                  subtitle: Text('ID: $pixivId'),
-                  onTap: () {
-                    _launchURL('https://www.pixiv.net/artworks/$pixivId');
-                  },
-                ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -256,7 +293,6 @@ class _DetailScreenState extends State<DetailScreen>
 
   @override
   void dispose() {
-    // NOTE: 追加忘れ？
     _pageController.dispose();
     // ★★★ この画面を離れるときに、必ずシステムUIを元に戻す
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -326,7 +362,7 @@ class _DetailScreenState extends State<DetailScreen>
                     icon: const Icon(Icons.share_outlined),
                     onPressed: () {
                       final currentImage = widget.imageFileList[_currentIndex];
-                      // TODO: 課金で削除？
+                      // TODO: 課金で削除
                       String shareText = "これはmoe_viewerで共有されました。\n";
                       if (PixivUtils.extractPixivId(currentImage.path) !=
                           null) {
