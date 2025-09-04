@@ -351,7 +351,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               title: 'AIによる画像解析とは',
                               content:
                                   'この機能を有効にすることでアプリはデバイス内で画像の内容を分析し、タグ付けを行うことができます。\n\n'
-                                  'これにより金髪といった特徴で画像を検索できたり、ジャンル別でのフィルタリングが可能になります。\n\n'
+                                  'これによりキャラ名で画像を検索できたり、ジャンル別でのフィルタリングが可能になります。\n\n'
                                   'この処理はすべてオフラインで完結し、あなたの画像が外部に送信されることはありません。\n\n'
                                   'また、この機能を有効にしても、画像が機械学習に用いられたりすることはありません。',
                             );
@@ -417,14 +417,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     size: 32,
                                   ),
                                   title: Text(
-                                    'モデルファイルが破損しています',
+                                    '解析用ファイルが破損しています',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: Colors.red.shade800,
                                     ),
                                   ),
                                   subtitle: Text(
-                                    'ハッシュ値が一致しないため、ファイルが破損している可能性があります。\nモデルを修復することをお勧めします。',
+                                    'ファイルが破損しています。\n修復ボタンからモデルの修復をお願いします。\n何度修復を押しても治らない場合、お手数ですが「その他→バグ報告」からご連絡ください。\n（すみません🙇）',
                                     style: TextStyle(
                                       color: Colors.red.shade700,
                                     ),
@@ -468,31 +468,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                 ),
                               ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                16.0,
-                                8.0,
-                                16.0,
-                                8.0,
+                            if (!settings.isModelCorrupted)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16.0,
+                                  8.0,
+                                  16.0,
+                                  8.0,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '解析インデックス達成度 (解析済み：${settings.analyzedFileCount})',
+                                    ),
+                                    const SizedBox(height: 4),
+                                    LinearProgressIndicator(
+                                      value: settings.totalFileCount > 0
+                                          ? settings.analyzedFileCount /
+                                                settings.totalFileCount
+                                          : 0,
+                                      minHeight: 8, // バーの太さを少し太くする
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '解析インデックス達成度 (解析済み：${settings.analyzedFileCount})',
-                                  ),
-                                  const SizedBox(height: 4),
-                                  LinearProgressIndicator(
-                                    value: settings.totalFileCount > 0
-                                        ? settings.analyzedFileCount /
-                                              settings.totalFileCount
-                                        : 0,
-                                    minHeight: 8, // バーの太さを少し太くする
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ],
-                              ),
-                            ),
                             if (!settings.isModelCorrupted)
                               Padding(
                                 padding: const EdgeInsets.symmetric(
