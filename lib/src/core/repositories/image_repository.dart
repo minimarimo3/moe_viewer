@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:developer';
 
 import 'package:photo_manager/photo_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -124,7 +125,7 @@ class ImageRepository {
       }
     } catch (e) {
       // ディレクトリアクセスエラーを静かに処理
-      print('Directory scan error for ${directory.path}: $e');
+      log('Directory scan error for ${directory.path}: $e');
     }
   }
 

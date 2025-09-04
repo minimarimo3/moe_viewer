@@ -127,7 +127,7 @@ class SettingsProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       // エラーが発生してもアプリを止めない
-      print('Error during heavy initialization: $e');
+      log('Error during heavy initialization: $e');
     }
   }
 
@@ -518,7 +518,7 @@ class SettingsProvider extends ChangeNotifier {
       await updateOverallProgress();
       notifyListeners();
     } catch (e) {
-      print('Progress update error: $e');
+      log('Progress update error: $e');
     }
   }
 

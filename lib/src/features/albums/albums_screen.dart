@@ -5,7 +5,7 @@ import '../../core/models/album.dart';
 import '../../core/services/albums_service.dart';
 import '../gallery/widgets/gallery_grid_widget.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
-import '../gallery/widgets/pie_menu_widget.dart';
+import '../../common_widgets/pie_menu_widget.dart';
 import '../../core/providers/settings_provider.dart';
 import 'package:provider/provider.dart';
 import '../detail/detail_screen.dart';
@@ -265,8 +265,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   List<File> _files = [];
   bool _loading = true;
   late AutoScrollController _autoController;
-  final GlobalKey<GalleryPieMenuWidgetState> _pieMenuKey =
-      GlobalKey<GalleryPieMenuWidgetState>();
+  final GlobalKey<PieMenuWidgetState> _pieMenuKey =
+      GlobalKey<PieMenuWidgetState>();
   bool _selectMode = false;
   final Set<String> _selectedPaths = {};
   String _sortMode = 'added_desc';
@@ -348,12 +348,12 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
           ? const Center(child: Text('このアルバムにはまだ画像がありません'))
           : (_reorderUIActive
                 ? _buildManualGrid(crossAxisCount)
-                : GalleryPieMenuWidget(
+                : PieMenuWidget(
                     key: _pieMenuKey,
                     albumId: widget.album.id,
                     // アルバムから削除後に一覧を更新
                     onRemove: _load,
-                    onMenuRequest: (item, pos) {},
+                    
                     child: GalleryGridWidget(
                       displayItems: _files,
                       imageFilesForDetail: _files,

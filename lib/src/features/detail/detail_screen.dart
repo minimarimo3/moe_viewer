@@ -11,7 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/utils/pixiv_utils.dart';
-import 'widgets/detail_pie_menu_widget.dart';
+import '../../common_widgets/pie_menu_widget.dart';
 
 class DetailScreen extends StatefulWidget {
   final List<File> imageFileList;
@@ -48,12 +48,13 @@ class _DetailScreenState extends State<DetailScreen>
   static const double _verticalSwipeDistanceThreshold = 80.0; // px
   static const double _verticalSwipeVelocityThreshold = 500.0; // px/s
 
-  final GlobalKey<DetailPieMenuWidgetState> _pieMenuKey =
-      GlobalKey<DetailPieMenuWidgetState>();
+  final GlobalKey<PieMenuWidgetState> _pieMenuKey =
+      GlobalKey<PieMenuWidgetState>();
 
   void _handleLongPress(Offset globalPosition) {
     final pieMenuState = _pieMenuKey.currentState;
-    pieMenuState?.openMenuAtPosition(globalPosition);
+    final currentFile = widget.imageFileList[_currentIndex];
+    pieMenuState?.openMenuForItem(currentFile, globalPosition);
   }
 
   Future<void> _showImageDetails(File imageFile) async {
@@ -530,9 +531,8 @@ class _DetailScreenState extends State<DetailScreen>
   Widget build(BuildContext context) {
     final currentFile = widget.imageFileList[_currentIndex];
 
-    return DetailPieMenuWidget(
+    return PieMenuWidget(
       key: _pieMenuKey,
-      currentFile: currentFile,
       child: Scaffold(
         // ★★★ _isUiVisibleの値に応じてAppBarを表示/非表示
         appBar: _isUiVisible

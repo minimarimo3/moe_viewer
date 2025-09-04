@@ -13,12 +13,13 @@ import '../settings/settings_screen.dart';
 import '../../core/providers/settings_provider.dart';
 import '../../core/repositories/image_repository.dart';
 import '../../core/services/database_helper.dart';
-import 'widgets/pie_menu_widget.dart';
+import '../../common_widgets/pie_menu_widget.dart';
 import 'widgets/gallery_grid_widget.dart';
 import 'widgets/gallery_list_widget.dart';
 import 'utils/gallery_shuffle_utils.dart';
 import '../albums/albums_screen.dart';
 import '../../core/services/albums_service.dart';
+import '../../common_widgets/dialogs.dart';
 
 enum LoadingStatus {
   loading, // 読み込み中
@@ -55,8 +56,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   Timer? _debounce;
 
   final bool _isAutoScrolling = false;
-  final GlobalKey<GalleryPieMenuWidgetState> _pieMenuKey =
-      GlobalKey<GalleryPieMenuWidgetState>();
+  final GlobalKey<PieMenuWidgetState> _pieMenuKey =
+      GlobalKey<PieMenuWidgetState>();
 
   // AppBarアニメーション用コントローラー
   late AnimationController _appBarAnimationController;
@@ -82,28 +83,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   void _handleLongPress(dynamic item, Offset globalPosition) {
     // pie menu widget内でopenMenuForItemを呼び出すためのハンドラー
     log('--- _handleLongPress called ---');
-    if (mounted) {
-      log('Long press detected on item: $item at position: $globalPosition');
-
-      // GlobalKeyを使用して直接アクセス
-      final pieMenuState = _pieMenuKey.currentState;
-      if (pieMenuState != null) {
-        log('Using GlobalKey to call openMenuForItem...');
-        pieMenuState.openMenuForItem(item, globalPosition);
-        return;
-      }
-
-      // findAncestorStateOfTypeも試してみる
-      final pieMenuWidget = context
-          .findAncestorStateOfType<GalleryPieMenuWidgetState>();
-      log('Found pie menu widget: ${pieMenuWidget != null}');
-      if (pieMenuWidget != null) {
-        log('Calling openMenuForItem...');
-        pieMenuWidget.openMenuForItem(item, globalPosition);
-      } else {
-        log('ERROR: Could not find GalleryPieMenuWidgetState ancestor!');
-      }
-    }
+    final pieMenuState = _pieMenuKey.currentState;
+    pieMenuState?.openMenuForItem(item, globalPosition);
   }
 
   @override
@@ -384,11 +365,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       }
     }
 
-    return GalleryPieMenuWidget(
+    return PieMenuWidget(
       key: _pieMenuKey,
-      onMenuRequest: (item, globalPosition) {
-        // _handleLongPressから直接GlobalKey経由で呼び出すため、ここは空でOK
-      },
       child: Scaffold(
         appBar: PreferredSize(
           preferredSize: const Size.fromHeight(kToolbarHeight),
@@ -442,7 +420,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                       final paths = indices
                           .map((i) => _imageFilesForDetail[i].path)
                           .toList();
-                      final albumId = await _pickAlbumDialog(context);
+                      final albumId = await pickAlbumDialog(context);
                       if (albumId == null) return;
                       await DatabaseHelper.instance.addImagesToAlbum(
                         albumId,
@@ -762,64 +740,5 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     ).showSnackBar(const SnackBar(content: Text('表示順をシャッフルしました。')));
   }
 
-  Future<int?> _pickAlbumDialog(BuildContext context) async {
-    final albums = await AlbumsService.instance.listAlbums();
-    return showDialog<int>(
-      context: context,
-      builder: (context) {
-        final controller = TextEditingController();
-        return AlertDialog(
-          title: const Text('アルバムを選択'),
-          content: SizedBox(
-            width: 360,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (albums.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 8.0),
-                    child: Text('アルバムがありません。新規作成してください。'),
-                  ),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: albums.length,
-                    itemBuilder: (context, index) {
-                      final a = albums[index];
-                      return ListTile(
-                        leading: const Icon(Icons.photo_album_outlined),
-                        title: Text(a.name),
-                        onTap: () => Navigator.of(context).pop(a.id),
-                      );
-                    },
-                  ),
-                ),
-                const Divider(),
-                TextField(
-                  controller: controller,
-                  decoration: const InputDecoration(labelText: '新しいアルバム名'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              onPressed: () async {
-                final name = controller.text.trim();
-                if (name.isEmpty) return;
-                final album = await AlbumsService.instance.createAlbum(name);
-                if (!context.mounted) return;
-                Navigator.of(context).pop(album.id);
-              },
-              child: const Text('作成して追加'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+  
 }
