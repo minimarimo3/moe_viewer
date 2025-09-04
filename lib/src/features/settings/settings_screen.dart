@@ -395,7 +395,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: settings.isCheckingHash
                       ? const ListTile(
                           leading: CircularProgressIndicator(),
-                          title: Text('モデルの整合性をチェック中...'),
+                          title: Text('解析用ファイルが破損していないかチェック中...\n（少し時間がかかります）'),
                         )
                       : settings.isCheckingDownload
                       ? const ListTile(

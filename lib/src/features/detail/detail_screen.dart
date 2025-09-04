@@ -207,78 +207,9 @@ class _DetailScreenState extends State<DetailScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          if (tags != null && tags.isNotEmpty) ...[
-                            const SizedBox(height: 8.0),
-                            Row(
-                              children: [
-                                const Icon(Icons.psychology_outlined, size: 20),
-                                const SizedBox(width: 8.0),
-                                Text(
-                                  'AIによる解析タグ (${tags.length}個)',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12.0),
-                            Wrap(
-                              spacing: 8.0,
-                              runSpacing: 8.0,
-                              children: tags
-                                  .map(
-                                    (tag) => Chip(
-                                      label: Text(tag),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8.0,
-                                        vertical: 4.0,
-                                      ),
-                                      labelStyle: const TextStyle(fontSize: 13),
-                                      backgroundColor: Theme.of(context)
-                                          .colorScheme
-                                          .primaryContainer
-                                          .withValues(alpha: 0.7),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                            const SizedBox(height: 24.0),
-                          ],
-                          // ファイル情報セクション
-                          Row(
-                            children: [
-                              const Icon(Icons.folder_outlined, size: 20),
-                              const SizedBox(width: 8.0),
-                              const Text(
-                                'ファイル情報',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12.0),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12.0),
-                            decoration: BoxDecoration(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.surfaceVariant.withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(8.0),
-                            ),
-                            child: SelectableText(
-                              imageFile.path,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                          ),
+                          // 1. Pixiv連携セクション（最初に表示）
                           if (pixivId != null) ...[
-                            const SizedBox(height: 24.0),
+                            const SizedBox(height: 8.0),
                             Row(
                               children: [
                                 const Icon(Icons.open_in_new, size: 20),
@@ -350,7 +281,81 @@ class _DetailScreenState extends State<DetailScreen>
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 24.0),
                           ],
+
+                          // 2. ファイル情報セクション（2番目に表示）
+                          Row(
+                            children: [
+                              const Icon(Icons.folder_outlined, size: 20),
+                              const SizedBox(width: 8.0),
+                              const Text(
+                                'ファイル情報',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12.0),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12.0),
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceVariant.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(8.0),
+                            ),
+                            child: SelectableText(
+                              imageFile.path,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+
+                          // 3. AIによる解析タグセクション（最後に表示）
+                          if (tags != null && tags.isNotEmpty) ...[
+                            const SizedBox(height: 24.0),
+                            Row(
+                              children: [
+                                const Icon(Icons.psychology_outlined, size: 20),
+                                const SizedBox(width: 8.0),
+                                Text(
+                                  'AIによる解析タグ (${tags.length}個)',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12.0),
+                            Wrap(
+                              spacing: 8.0,
+                              runSpacing: 8.0,
+                              children: tags
+                                  .map(
+                                    (tag) => Chip(
+                                      label: Text(tag),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8.0,
+                                        vertical: 4.0,
+                                      ),
+                                      labelStyle: const TextStyle(fontSize: 13),
+                                      backgroundColor: Theme.of(context)
+                                          .colorScheme
+                                          .primaryContainer
+                                          .withValues(alpha: 0.7),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ],
+
                           // 下部の余白
                           const SizedBox(height: 16.0),
                         ],
