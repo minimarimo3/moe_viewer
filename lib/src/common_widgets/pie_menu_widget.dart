@@ -111,6 +111,18 @@ class PieMenuWidgetState extends State<PieMenuWidget> {
 
   List<PieAction> _buildPieActions() {
     return [
+      if (_currentPixivId == null)
+        PieAction(
+          buttonTheme: PieButtonTheme(
+            backgroundColor: Colors.blueGrey,
+            iconColor: Colors.white,
+          ),
+          tooltip: const Text('Pixivの作品IDが見つかりません'),
+          onSelect: () {
+            log('No Pixiv ID available for this item: $_currentTargetPath');
+          },
+          child: const Icon(Icons.open_in_new),
+        ),
       if (_currentPixivId != null)
         PieAction(
           tooltip: const Text('Pixivを開く'),
