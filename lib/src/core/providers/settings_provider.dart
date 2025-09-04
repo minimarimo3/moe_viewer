@@ -353,7 +353,10 @@ class SettingsProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> downloadModel(AiModelDefinition modelDef) async {
+  Future<void> downloadModel(
+    AiModelDefinition modelDef, {
+    bool isReset = false,
+  }) async {
     if (_isDownloading) return;
 
     _isDownloading = true;
@@ -363,6 +366,12 @@ class SettingsProvider extends ChangeNotifier {
 
     final modelPath = await _getModelPath(modelDef.modelFileName);
     final labelsPath = await _getLabelsPath(modelDef.labelFileName);
+    if (isReset && await File(modelPath).exists()) {
+      await File(modelPath).delete();
+    }
+    if (isReset && await File(labelsPath).exists()) {
+      await File(labelsPath).delete();
+    }
 
     try {
       await downloadWithResume(modelDef.modelDownloadUrl, modelPath);
@@ -377,8 +386,6 @@ class SettingsProvider extends ChangeNotifier {
         log("ダウンロードエラー: $e");
         _emitDownloadError('AIモデルのダウンロードに失敗しました。通信状況をご確認のうえ再試行してください。');
       }
-      // if (await File(modelPath).exists()) { await File(modelPath).delete(); }
-      // if (await File(labelsPath).exists()) { await File(labelsPath).delete(); }
     } finally {
       _isDownloading = false;
       notifyListeners();

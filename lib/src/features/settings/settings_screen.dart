@@ -437,8 +437,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       foregroundColor: Colors.white,
                                     ),
                                     onPressed: () async {
+                                      const int cancel = 0;
+                                      const int deleteAndDownload = 1;
+                                      const int redownload = 2;
                                       // ★★★ 再ダウンロードの確認ダイアログを表示 ★★★
-                                      final confirm = await showDialog<bool>(
+                                      final confirm = await showDialog<int>(
                                         context: context,
                                         builder: (context) => AlertDialog(
                                           title: const Text('モデルの再ダウンロード'),
@@ -449,20 +452,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             TextButton(
                                               onPressed: () => Navigator.of(
                                                 context,
-                                              ).pop(false),
+                                              ).pop(cancel),
                                               child: const Text('キャンセル'),
                                             ),
                                             TextButton(
                                               onPressed: () => Navigator.of(
                                                 context,
-                                              ).pop(true),
-                                              child: const Text('再ダウンロード'),
+                                              ).pop(deleteAndDownload),
+                                              child: const Text('一から再ダウンロード'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () => Navigator.of(
+                                                context,
+                                              ).pop(redownload),
+                                              child: const Text(
+                                                '前回の場所から再ダウンロード',
+                                              ),
                                             ),
                                           ],
                                         ),
                                       );
-                                      if (confirm == true) {
+                                      if (confirm == deleteAndDownload) {
+                                        settings.downloadModel(
+                                          selectedModel,
+                                          isReset: true,
+                                        );
+                                        settings.checkModelStatus(
+                                          selectedModelDef,
+                                        );
+                                      } else if (confirm == redownload) {
                                         settings.downloadModel(selectedModel);
+                                        settings.checkModelStatus(
+                                          selectedModelDef,
+                                        );
                                       }
                                     },
                                   ),
