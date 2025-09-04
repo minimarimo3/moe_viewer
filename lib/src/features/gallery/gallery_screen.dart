@@ -508,11 +508,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
   void _onSearchChanged(String value) {
     _searchDebounce?.cancel();
-    // バックスペース等で空になったら検索終了
-    if (value.trim().isEmpty) {
-      _exitSearchMode();
-      return;
-    }
+    // テキストが変更されたら、サジェストを更新し、少し待ってから検索を適用する
+    // テキストが空になっても検索モードは維持し、全件表示に戻す
     _updateSuggestions();
     _searchDebounce = Timer(const Duration(milliseconds: 300), _applySearch);
   }
