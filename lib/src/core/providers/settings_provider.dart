@@ -93,6 +93,9 @@ class SettingsProvider extends ChangeNotifier {
   List<FolderSetting> _folderSettings = [];
   List<FolderSetting> get folderSettings => _folderSettings;
 
+  List<int>? _shuffleOrder;
+  List<int>? get shuffleOrder => _shuffleOrder;
+
   /// ファイル破損チェック
   bool _isModelCorrupted = false;
   bool get isModelCorrupted => _isModelCorrupted;
@@ -114,6 +117,7 @@ class SettingsProvider extends ChangeNotifier {
     _lastScrollIndex = await _settingsRepository.loadLastScrollIndex();
     _folderSettings = await _settingsRepository.loadFolderSettings();
     _nsfwFilterEnabled = await _settingsRepository.loadNsfwFilter();
+    _shuffleOrder = await _settingsRepository.loadShuffleOrder();
 
     // UIをすぐに更新
     notifyListeners();
@@ -168,6 +172,18 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> setLastScrollIndex(int index) async {
     _lastScrollIndex = index;
     await _settingsRepository.saveLastScrollIndex(index);
+  }
+
+  Future<void> saveShuffleOrder(List<int> order) async {
+    _shuffleOrder = List.from(order);
+    await _settingsRepository.saveShuffleOrder(order);
+    notifyListeners();
+  }
+
+  Future<void> clearShuffleOrder() async {
+    _shuffleOrder = null;
+    await _settingsRepository.clearShuffleOrder();
+    notifyListeners();
   }
 
   Future<void> updateOverallProgress() async {

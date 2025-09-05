@@ -182,6 +182,11 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         _filteredDetailIndices = [];
       });
 
+      // シャッフル状態の復元
+      if (settings.shuffleOrder != null) {
+        _applyShuffleOrder(settings.shuffleOrder!);
+      }
+
       log('合計 ${imageList.displayItems.length} 個のアイテムが見つかりました（詳細画面用リストも準備完了）。');
 
       // スクロール位置の復元も非同期で実行
@@ -510,7 +515,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                     icon: const Icon(Icons.shuffle),
                     tooltip: '表示順をシャッフル',
                     onPressed: () {
-                      _showShuffleConfirmationDialog();
+                      _showShuffleOptionsDialog();
                     },
                   ),
                   IconButton(
@@ -723,17 +728,30 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     });
   }
 
-  Future<void> _showShuffleConfirmationDialog() async {
-    final confirm = await GalleryShuffleUtils.showShuffleConfirmationDialog(
+  Future<void> _showShuffleOptionsDialog() async {
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final hasShuffleState = settings.shuffleOrder != null;
+
+    final action = await GalleryShuffleUtils.showShuffleOptionsDialog(
       context,
+      hasShuffleState,
     );
 
-    if (confirm == true) {
-      _shuffleImages();
+    switch (action) {
+      case ShuffleAction.shuffle:
+        await _shuffleImages();
+        break;
+      case ShuffleAction.reset:
+        await _resetToOriginalOrder();
+        break;
+      case ShuffleAction.cancel:
+      case null:
+        // 何もしない
+        break;
     }
   }
 
-  void _shuffleImages() {
+  Future<void> _shuffleImages() async {
     // 検索中/フィルタ中は「現在画面に表示されている項目のみ」をシャッフルする。
     final hasQuery = _isSearchMode && _searchController.text.trim().isNotEmpty;
     final hasActiveFilter = _isFilterActive;
@@ -773,6 +791,10 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         imageFilesForDetail: _imageFilesForDetail,
       );
 
+      // シャッフル順序を保存
+      final settings = Provider.of<SettingsProvider>(context, listen: false);
+      await settings.saveShuffleOrder(result.shuffleOrder);
+
       // UIを更新
       setState(() {
         _displayItems = result.displayItems;
@@ -780,7 +802,29 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       });
     }
 
+    _resetScrollAndFilters();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('表示順をシャッフルしました。')));
+  }
+
+  Future<void> _resetToOriginalOrder() async {
+    // 元の画像データを再読み込み
+    await _loadImages();
+
+    // シャッフル状態をクリア
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    await settings.clearShuffleOrder();
+
+    _resetScrollAndFilters();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('表示順を最初の状態に戻しました。')));
+  }
+
+  void _resetScrollAndFilters() {
     // 検索中なら再フィルタ
+    final hasQuery = _isSearchMode && _searchController.text.trim().isNotEmpty;
     if (hasQuery) {
       // 非同期だが結果は setState 内で反映
       _applySearch();
@@ -812,9 +856,18 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         _itemScrollController.isAttached) {
       _itemScrollController.jumpTo(index: 0);
     }
+  }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('表示順をシャッフルしました。')));
+  void _applyShuffleOrder(List<int> shuffleOrder) {
+    final result = GalleryShuffleUtils.applyShuffleOrder(
+      displayItems: _displayItems,
+      imageFilesForDetail: _imageFilesForDetail,
+      shuffleOrder: shuffleOrder,
+    );
+
+    setState(() {
+      _displayItems = result.displayItems;
+      _imageFilesForDetail = result.detailFiles;
+    });
   }
 }

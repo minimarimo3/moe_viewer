@@ -12,6 +12,7 @@ class SettingsRepository {
   static const String _gridCrossAxisCountKey = 'grid_cross_axis_count';
   static const String _themeModeKey = 'theme_mode';
   static const String _lastScrollIndexKey = 'last_scroll_index';
+  static const String _shuffleOrderKey = 'shuffle_order';
 
   Future<void> saveFolderSettings(List<FolderSetting> folderSettings) async {
     final prefs = await SharedPreferences.getInstance();
@@ -90,5 +91,25 @@ class SettingsRepository {
   Future<bool> loadNsfwFilter() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_nsfwKey) ?? false;
+  }
+
+  Future<void> saveShuffleOrder(List<int> order) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_shuffleOrderKey, jsonEncode(order));
+  }
+
+  Future<List<int>?> loadShuffleOrder() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? orderJson = prefs.getString(_shuffleOrderKey);
+    if (orderJson != null) {
+      final List<dynamic> orderList = jsonDecode(orderJson);
+      return orderList.cast<int>();
+    }
+    return null;
+  }
+
+  Future<void> clearShuffleOrder() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_shuffleOrderKey);
   }
 }
