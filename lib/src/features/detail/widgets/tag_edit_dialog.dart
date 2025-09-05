@@ -110,12 +110,14 @@ class _TagEditDialogState extends State<TagEditDialog> {
     }
   }
 
-  Future<void> _removeTag(String tag) async {
+  Future<void> _removeTag(String tag, {bool isAiTag = false}) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('タグを削除'),
-        content: Text('「$tag」を削除しますか？'),
+        content: Text(
+          '「$tag」を削除しますか？${isAiTag ? '\n（AIタグは非表示になりますが、復元可能です）' : ''}',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -132,10 +134,17 @@ class _TagEditDialogState extends State<TagEditDialog> {
     if (confirmed != true) return;
 
     try {
-      await DatabaseHelper.instance.removeManualTag(widget.imagePath, tag);
-      setState(() {
-        _manualTags.remove(tag);
-      });
+      if (isAiTag) {
+        await DatabaseHelper.instance.deleteAiTag(widget.imagePath, tag);
+        setState(() {
+          _aiTags.remove(tag);
+        });
+      } else {
+        await DatabaseHelper.instance.removeManualTag(widget.imagePath, tag);
+        setState(() {
+          _manualTags.remove(tag);
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -153,8 +162,8 @@ class _TagEditDialogState extends State<TagEditDialog> {
           : Theme.of(
               context,
             ).colorScheme.primaryContainer.withValues(alpha: 0.7),
-      deleteIcon: isManual ? const Icon(Icons.close, size: 18) : null,
-      onDeleted: isManual ? () => _removeTag(tag) : null,
+      deleteIcon: const Icon(Icons.close, size: 18),
+      onDeleted: () => _removeTag(tag, isAiTag: !isManual),
       labelStyle: TextStyle(
         fontSize: 13,
         color: isManual

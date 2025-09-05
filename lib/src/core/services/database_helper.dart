@@ -18,7 +18,7 @@ class DatabaseHelper {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _createDB,
       onConfigure: (db) async {
         // 外部キー制約を有効化
@@ -67,6 +67,16 @@ class DatabaseHelper {
         PRIMARY KEY (path, tag)
       )
     ''');
+
+    // v5: 削除されたAIタグ用テーブル
+    await db.execute('''
+      CREATE TABLE deleted_ai_tags (
+        path TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        deleted_at INTEGER NOT NULL,
+        PRIMARY KEY (path, tag)
+      )
+    ''');
   }
 
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -109,6 +119,17 @@ class DatabaseHelper {
           path TEXT NOT NULL,
           tag TEXT NOT NULL,
           added_at INTEGER NOT NULL,
+          PRIMARY KEY (path, tag)
+        )
+      ''');
+    }
+    if (oldVersion < 5) {
+      // v5: 削除されたAIタグ用テーブルを追加
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS deleted_ai_tags (
+          path TEXT NOT NULL,
+          tag TEXT NOT NULL,
+          deleted_at INTEGER NOT NULL,
           PRIMARY KEY (path, tag)
         )
       ''');
@@ -167,11 +188,50 @@ class DatabaseHelper {
     return result.map((row) => row['tag'] as String).toList();
   }
 
-  // AI解析タグと手動タグを統合して取得
+  // AI解析タグと手動タグを統合して取得（削除されたAIタグは除外）
   Future<Map<String, List<String>>> getAllTagsForPath(String path) async {
-    final aiTags = await getTagsForPath(path) ?? [];
+    // AIタグを取得
+    final rawAiTags = await getTagsForPath(path) ?? [];
+
+    // 削除されたAIタグのリストを取得
+    final db = await instance.database;
+    final deletedRows = await db.query(
+      'deleted_ai_tags',
+      columns: ['tag'],
+      where: 'path = ?',
+      whereArgs: [path],
+    );
+    final deletedAiTags = deletedRows
+        .map((row) => row['tag'] as String)
+        .toSet();
+
+    // 削除されたタグを除外
+    final aiTags = rawAiTags
+        .where((tag) => !deletedAiTags.contains(tag))
+        .toList();
+
     final manualTags = await getManualTagsForPath(path);
     return {'ai': aiTags, 'manual': manualTags};
+  }
+
+  // AIタグを削除（削除済みとしてマーク）
+  Future<void> deleteAiTag(String path, String tag) async {
+    final db = await instance.database;
+    await db.insert('deleted_ai_tags', {
+      'path': path,
+      'tag': tag,
+      'deleted_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  // AIタグの削除を取り消し（削除済みマークを解除）
+  Future<void> restoreAiTag(String path, String tag) async {
+    final db = await instance.database;
+    await db.delete(
+      'deleted_ai_tags',
+      where: 'path = ? AND tag = ?',
+      whereArgs: [path, tag],
+    );
   }
 
   // 手動タグを追加
@@ -215,7 +275,7 @@ class DatabaseHelper {
   }
 
   // 複数タグAND検索（大文字小文字を無視）し、該当パスのみ返す
-  // AI解析タグと手動タグの両方を検索対象とする
+  // AI解析タグと手動タグの両方を検索対象とする（削除されたAIタグは除外）
   Future<List<String>> searchByTags(List<String> tokens) async {
     // エイリアスを正規タグに正規化（未登録は小文字化）
     final normalized = ReservedTags.normalizeTokens(tokens);
@@ -223,15 +283,17 @@ class DatabaseHelper {
 
     final db = await instance.database;
 
-    // AI解析タグでの検索
+    // AI解析タグでの検索（削除されたタグは除外）
     final aiLikeConds = List.filled(normalized.length, 'LOWER(tags) LIKE ?');
     final aiWhereCore = aiLikeConds.join(' AND ');
     final aiExclusion = ' AND tags NOT LIKE ? AND tags NOT LIKE ?';
-    final aiWhere = aiWhereCore + aiExclusion;
+    final aiWhere =
+        '$aiWhereCore$aiExclusion AND NOT EXISTS (SELECT 1 FROM deleted_ai_tags WHERE deleted_ai_tags.path = image_tags.path AND LOWER(deleted_ai_tags.tag) IN (${List.filled(normalized.length, '?').join(', ')}))';
     final aiArgs = [
       ...normalized.map((t) => '%$t%'),
       '%AI解析エラー%',
       '%タグが見つかりませんでした%',
+      ...normalized.map((t) => t.toLowerCase()),
     ];
 
     final aiRows = await db.query(
@@ -278,24 +340,41 @@ class DatabaseHelper {
   }
 
   // 全タグ一覧（重複除去）を取得する。大文字小文字は区別しない。
-  // AI解析タグと手動タグの両方を含む
+  // AI解析タグと手動タグの両方を含む（削除されたAIタグは除外）
   Future<List<String>> getAllTags() async {
     final db = await instance.database;
 
-    // AI解析タグを取得
+    // AI解析タグを取得（削除されたタグは除外）
     final aiRows = await db.query(
       'image_tags',
       columns: ['tags'],
       where: 'tags NOT LIKE ? AND tags NOT LIKE ?',
       whereArgs: ['%AI解析エラー%', '%タグが見つかりませんでした%'],
     );
+
+    // 削除されたAIタグのリストを取得
+    final deletedAiTagsResult = await db.query('deleted_ai_tags');
+    final deletedAiTags = <String, Set<String>>{};
+    for (final row in deletedAiTagsResult) {
+      final path = row['path'] as String;
+      final tag = row['tag'] as String;
+      deletedAiTags.putIfAbsent(path, () => <String>{}).add(tag.toLowerCase());
+    }
+
     final set = <String>{};
     for (final r in aiRows) {
+      final path = r['path'] as String? ?? '';
       final t = (r['tags'] as String?) ?? '';
+      final pathDeletedTags = deletedAiTags[path] ?? <String>{};
+
       for (final raw in t.split(',')) {
         final s = raw.trim();
         if (s.isEmpty) continue;
-        set.add(s);
+
+        // 削除されたAIタグでない場合のみ追加
+        if (!pathDeletedTags.contains(s.toLowerCase())) {
+          set.add(s);
+        }
       }
     }
 
