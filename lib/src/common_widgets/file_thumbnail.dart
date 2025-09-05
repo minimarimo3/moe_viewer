@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:async';
 
 import '../core/services/thumbnail_pool.dart';
 import '../core/services/thumbnail_service.dart';
@@ -11,6 +12,9 @@ import 'package:path_provider/path_provider.dart';
 // メモリキャッシュで高速化
 final Map<String, Uint8List> _memoryCache = {};
 const int _maxMemoryCacheSize = 50; // メモリキャッシュの最大アイテム数
+
+// バッチ処理用のキュー
+final Map<String, Completer<Uint8List?>> _pendingRequests = {};
 
 class FileThumbnail extends StatefulWidget {
   final File imageFile;
@@ -74,14 +78,29 @@ class _FileThumbnailState extends State<FileThumbnail> {
       return;
     }
 
-    final tempDir = await getTemporaryDirectory();
-    final h = widget.height?.toString() ?? 'auto';
-    final quality = widget.highQuality ? 'hq' : 'std';
-    final cacheFileName =
-        'thumb_${widget.imageFile.path.hashCode}_w${widget.width}_h${h}_$quality.jpg';
-    final cacheFile = File(p.join(tempDir.path, cacheFileName));
+    // 既に同じリクエストが進行中の場合は待機
+    if (_pendingRequests.containsKey(cacheKey)) {
+      final result = await _pendingRequests[cacheKey]!.future;
+      if (mounted && result != null) {
+        setState(() {
+          _thumbnailData = result;
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    // 新しいリクエストを登録
+    _pendingRequests[cacheKey] = Completer<Uint8List?>();
 
     try {
+      final tempDir = await getTemporaryDirectory();
+      final h = widget.height?.toString() ?? 'auto';
+      final quality = widget.highQuality ? 'hq' : 'std';
+      final cacheFileName =
+          'thumb_${widget.imageFile.path.hashCode}_w${widget.width}_h${h}_$quality.jpg';
+      final cacheFile = File(p.join(tempDir.path, cacheFileName));
+
       Uint8List data;
       if (await cacheFile.exists()) {
         data = await cacheFile.readAsBytes();
@@ -114,6 +133,10 @@ class _FileThumbnailState extends State<FileThumbnail> {
       }
       _memoryCache[cacheKey] = data;
 
+      // 待機中のリクエストを完了
+      _pendingRequests[cacheKey]?.complete(data);
+      _pendingRequests.remove(cacheKey);
+
       if (mounted) {
         setState(() {
           _thumbnailData = data;
@@ -121,6 +144,10 @@ class _FileThumbnailState extends State<FileThumbnail> {
         });
       }
     } catch (e) {
+      // エラーの場合も完了させる
+      _pendingRequests[cacheKey]?.complete(null);
+      _pendingRequests.remove(cacheKey);
+
       if (mounted) {
         setState(() {
           _isLoading = false;

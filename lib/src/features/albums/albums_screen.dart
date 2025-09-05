@@ -39,6 +39,10 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
   bool _loading = true;
   static const _favoriteVirtualId = -1; // 仮想ID
 
+  // ファイルリストのキャッシュ
+  final Map<int, List<File>> _filesCache = {};
+  final Map<int, bool> _filesCacheLoading = {};
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +64,37 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
       _albums = list;
       _loading = false;
     });
+
+    // 非同期でファイルリストを事前読み込み
+    _preloadFilesLists();
+  }
+
+  Future<void> _preloadFilesLists() async {
+    for (final album in _albums) {
+      if (_filesCacheLoading[album.id] == true) continue;
+      _filesCacheLoading[album.id] = true;
+
+      try {
+        List<File> files;
+        if (album.id == _favoriteVirtualId) {
+          files = await FavoritesService.instance.listFavoriteFiles();
+        } else {
+          files = await AlbumsService.instance.getAlbumFiles(
+            album.id,
+            sortMode: album.sortMode,
+          );
+        }
+
+        if (mounted) {
+          setState(() {
+            _filesCache[album.id] = files;
+            _filesCacheLoading[album.id] = false;
+          });
+        }
+      } catch (e) {
+        _filesCacheLoading[album.id] = false;
+      }
+    }
   }
 
   Future<void> _createAlbum() async {
@@ -146,96 +181,86 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                   itemBuilder: (context, index) {
                     final a = _albums[index];
                     final isFav = a.id == _favoriteVirtualId;
-                    return FutureBuilder<List<File>>(
-                      future: isFav
-                          ? FavoritesService.instance.listFavoriteFiles()
-                          : AlbumsService.instance.getAlbumFiles(
-                              a.id,
-                              sortMode: a.sortMode,
+                    final files = _filesCache[a.id] ?? <File>[];
+                    final isLoading = _filesCacheLoading[a.id] == true;
+
+                    return AlbumCard(
+                      title: a.name,
+                      files: files,
+                      thumbPx: thumbPx,
+                      isFavorite: isFav,
+                      showMenu: !isFav,
+                      isLoading: isLoading,
+                      onTap: () async {
+                        if (isFav) {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const FavoritesAlbumScreen(),
                             ),
-                      builder: (context, snapshot) {
-                        final files = snapshot.data ?? const <File>[];
-                        return AlbumCard(
-                          title: a.name,
-                          files: files,
-                          thumbPx: thumbPx,
-                          isFavorite: isFav,
-                          showMenu: !isFav,
-                          onTap: () async {
-                            if (isFav) {
-                              await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const FavoritesAlbumScreen(),
+                          );
+                          await _load();
+                          return;
+                        }
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AlbumDetailScreen(album: a),
+                          ),
+                        );
+                        await _load();
+                      },
+                      onMenuSelected: (value) async {
+                        if (value == 'rename') {
+                          final ctrl = TextEditingController(text: a.name);
+                          final newName = await showDialog<String>(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text('名前を変更'),
+                              content: TextField(controller: ctrl),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('キャンセル'),
                                 ),
-                              );
-                              await _load();
-                              return;
-                            }
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => AlbumDetailScreen(album: a),
-                              ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, ctrl.text.trim()),
+                                  child: const Text('保存'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (newName != null && newName.isNotEmpty) {
+                            await AlbumsService.instance.renameAlbum(
+                              a.id,
+                              newName,
                             );
                             await _load();
-                          },
-                          onMenuSelected: (value) async {
-                            if (value == 'rename') {
-                              final ctrl = TextEditingController(text: a.name);
-                              final newName = await showDialog<String>(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: const Text('名前を変更'),
-                                  content: TextField(controller: ctrl),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('キャンセル'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(
-                                        context,
-                                        ctrl.text.trim(),
-                                      ),
-                                      child: const Text('保存'),
-                                    ),
-                                  ],
+                          }
+                        } else if (value == 'delete') {
+                          final ok = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text('アルバムを削除'),
+                              content: Text('${a.name} を削除しますか？'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('キャンセル'),
                                 ),
-                              );
-                              if (newName != null && newName.isNotEmpty) {
-                                await AlbumsService.instance.renameAlbum(
-                                  a.id,
-                                  newName,
-                                );
-                                await _load();
-                              }
-                            } else if (value == 'delete') {
-                              final ok = await showDialog<bool>(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: const Text('アルバムを削除'),
-                                  content: Text('${a.name} を削除しますか？'),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('キャンセル'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(context, true),
-                                      child: const Text('削除'),
-                                    ),
-                                  ],
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('削除'),
                                 ),
-                              );
-                              if (ok == true) {
-                                await AlbumsService.instance.deleteAlbum(a.id);
-                                await _load();
-                              }
-                            }
-                          },
-                        );
+                              ],
+                            ),
+                          );
+                          if (ok == true) {
+                            await AlbumsService.instance.deleteAlbum(a.id);
+                            await _load();
+                          }
+                        }
                       },
                     );
                   },

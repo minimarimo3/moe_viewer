@@ -14,6 +14,7 @@ class AlbumCard extends StatelessWidget {
     this.onMenuSelected,
     this.showMenu = true,
     this.isFavorite = false,
+    this.isLoading = false,
   });
 
   final String title;
@@ -24,6 +25,7 @@ class AlbumCard extends StatelessWidget {
   final ValueChanged<String>? onMenuSelected;
   final bool showMenu;
   final bool isFavorite;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -56,8 +58,11 @@ class AlbumCard extends StatelessWidget {
                   child: Stack(
                     children: [
                       Positioned.fill(
-                        child: coverFiles.isEmpty
-                            ? _PlaceholderCover(isFavorite: isFavorite)
+                        child: (isLoading || coverFiles.isEmpty)
+                            ? _PlaceholderCover(
+                                isFavorite: isFavorite,
+                                isLoading: isLoading,
+                              )
                             : _MosaicCover(files: coverFiles, thumbPx: thumbPx),
                       ),
                       // Gradient for readable text
@@ -207,8 +212,8 @@ class _MosaicCover extends StatelessWidget {
           imageFile: file,
           width: px,
           key: ValueKey('${file.path}_$px'),
-          // アルバム表示では高品質を優先
-          highQuality: true,
+          // アルバム表示では標準品質で高速化
+          highQuality: false,
         ),
       ),
     );
@@ -216,8 +221,9 @@ class _MosaicCover extends StatelessWidget {
 }
 
 class _PlaceholderCover extends StatelessWidget {
-  const _PlaceholderCover({required this.isFavorite});
+  const _PlaceholderCover({required this.isFavorite, this.isLoading = false});
   final bool isFavorite;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -233,11 +239,18 @@ class _PlaceholderCover extends StatelessWidget {
         ),
       ),
       child: Center(
-        child: Icon(
-          isFavorite ? Icons.favorite_rounded : Icons.photo_library_rounded,
-          size: 48,
-          color: onBase.withValues(alpha: 0.9),
-        ),
+        child: isLoading
+            ? CircularProgressIndicator(
+                color: onBase.withValues(alpha: 0.9),
+                strokeWidth: 2,
+              )
+            : Icon(
+                isFavorite
+                    ? Icons.favorite_rounded
+                    : Icons.photo_library_rounded,
+                size: 48,
+                color: onBase.withValues(alpha: 0.9),
+              ),
       ),
     );
   }
