@@ -43,7 +43,7 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        sort_mode TEXT NOT NULL DEFAULT 'added_desc' -- added_desc/added_asc/name_asc/name_desc/updated_desc
+        sort_mode TEXT NOT NULL DEFAULT 'manual' -- added_desc/added_asc/name_asc/name_desc/manual
       )
     ''');
 
@@ -66,7 +66,7 @@ class DatabaseHelper {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
           created_at INTEGER NOT NULL,
-          sort_mode TEXT NOT NULL DEFAULT 'added_desc'
+          sort_mode TEXT NOT NULL DEFAULT 'manual'
         )
       ''');
       await db.execute('''

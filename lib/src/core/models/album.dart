@@ -8,7 +8,7 @@ class Album {
     required this.id,
     required this.name,
     required this.createdAt,
-    this.sortMode = 'added_desc',
+    this.sortMode = 'manual',
   });
 
   factory Album.fromRow(Map<String, dynamic> row) {
@@ -16,7 +16,7 @@ class Album {
       id: row['id'] as int,
       name: row['name'] as String,
       createdAt: DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
-      sortMode: (row['sort_mode'] as String?) ?? 'added_desc',
+      sortMode: (row['sort_mode'] as String?) ?? 'manual',
     );
   }
 }

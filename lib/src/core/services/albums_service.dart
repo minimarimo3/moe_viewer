@@ -51,7 +51,7 @@ class AlbumsService {
 
   Future<List<File>> getAlbumFiles(
     int albumId, {
-    String sortMode = 'added_desc',
+    String sortMode = 'manual',
   }) async {
     final items = await getAlbumItems(albumId);
     // sortMode: added_desc, added_asc, name_asc, name_desc, manual

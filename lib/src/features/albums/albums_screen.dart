@@ -34,7 +34,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
 
   Future<String?> _pickSortMode(
     BuildContext context, {
-    String initial = 'added_desc',
+    String initial = 'manual',
   }) async {
     const modes = {
       'added_desc': '追加が新しい順',
@@ -275,10 +275,6 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                                   child: Text('名前変更'),
                                 ),
                                 PopupMenuItem(
-                                  value: 'sort',
-                                  child: Text('並び替え'),
-                                ),
-                                PopupMenuItem(
                                   value: 'delete',
                                   child: Text('削除'),
                                 ),
@@ -309,7 +305,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       GlobalKey<PieMenuWidgetState>();
   bool _selectMode = false;
   final Set<String> _selectedPaths = {};
-  String _sortMode = 'added_desc';
+  String _sortMode = 'manual';
+
   bool _reorderUIActive = false; // 並び替えUIを表示するか（ソートモードとは独立）
   bool _reorderDirty = false; // 並び替え変更が未保存かどうか
 
