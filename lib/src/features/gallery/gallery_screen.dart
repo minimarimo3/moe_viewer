@@ -692,20 +692,53 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   }
 
   void _shuffleImages() {
-    // 新しいユーティリティを使用してシャッフル
-    final result = GalleryShuffleUtils.shuffleItems(
-      displayItems: _displayItems,
-      imageFilesForDetail: _imageFilesForDetail,
-    );
+    // 検索中/フィルタ中は「現在画面に表示されている項目のみ」をシャッフルする。
+    final hasQuery = _isSearchMode && _searchController.text.trim().isNotEmpty;
+    final hasActiveFilter = _isFilterActive;
 
-    // UIを更新
-    setState(() {
-      _displayItems = result.displayItems;
-      _imageFilesForDetail = result.detailFiles;
-    });
+    // 表示中のインデックス配列を決定（buildBody と同様のロジック）
+    List<int> indices;
+    if (hasActiveFilter) {
+      indices = _activeFilterIndices;
+    } else if (hasQuery) {
+      indices = _filteredDetailIndices;
+    } else {
+      indices = const [];
+    }
+
+    if (indices.isNotEmpty) {
+      // マスター配列内の該当位置のみを抜き出してシャッフルし、元の位置に書き戻す
+      final subsetDisplay = indices.map((i) => _displayItems[i]).toList();
+      final subsetDetail = indices.map((i) => _imageFilesForDetail[i]).toList();
+
+      final indexList = List.generate(subsetDisplay.length, (i) => i);
+      indexList.shuffle();
+
+      final shuffledDisplay = indexList.map((i) => subsetDisplay[i]).toList();
+      final shuffledDetail = indexList.map((i) => subsetDetail[i]).toList();
+
+      setState(() {
+        for (var k = 0; k < indices.length; k++) {
+          final idx = indices[k];
+          _displayItems[idx] = shuffledDisplay[k];
+          _imageFilesForDetail[idx] = shuffledDetail[k];
+        }
+      });
+    } else {
+      // 全体をシャッフル
+      final result = GalleryShuffleUtils.shuffleItems(
+        displayItems: _displayItems,
+        imageFilesForDetail: _imageFilesForDetail,
+      );
+
+      // UIを更新
+      setState(() {
+        _displayItems = result.displayItems;
+        _imageFilesForDetail = result.detailFiles;
+      });
+    }
 
     // 検索中なら再フィルタ
-    final hasQuery = _isSearchMode && _searchController.text.trim().isNotEmpty;
     if (hasQuery) {
       // 非同期だが結果は setState 内で反映
       _applySearch();
