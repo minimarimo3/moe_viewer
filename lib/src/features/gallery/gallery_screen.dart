@@ -13,12 +13,12 @@ import '../settings/settings_screen.dart';
 import '../../core/providers/settings_provider.dart';
 import '../../core/repositories/image_repository.dart';
 import '../../core/services/database_helper.dart';
+import '../../core/utils/pixiv_utils.dart';
 import '../../common_widgets/pie_menu_widget.dart';
 import 'widgets/gallery_grid_widget.dart';
 import 'widgets/gallery_list_widget.dart';
 import 'utils/gallery_shuffle_utils.dart';
 import '../albums/albums_screen.dart';
-import '../../core/services/albums_service.dart';
 import '../../common_widgets/dialogs.dart';
 
 enum LoadingStatus {
@@ -586,11 +586,20 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       _removeSuggestionsOverlay();
       return;
     }
-    final matched = _allTags
+    // 1) 既存タグから一致
+    final fromTags = _allTags
         .where((t) => t.toLowerCase().contains(last))
         .take(20)
         .toList();
-    _suggestions = matched;
+    // 2) エイリアス候補
+    final fromAliases = ReservedTags.suggestAliasTerms(last);
+    // 3) 結合して重複除去（エイリアスを先頭に優先）
+    final seen = <String>{};
+    final merged = <String>[
+      ...fromAliases.where((e) => seen.add(e)),
+      ...fromTags.where((e) => seen.add(e)),
+    ];
+    _suggestions = merged.take(20).toList();
     if (_isSearchMode) _showSuggestionsOverlay();
   }
 

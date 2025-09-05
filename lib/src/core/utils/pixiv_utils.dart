@@ -36,4 +36,44 @@ class ReservedTags {
     if (!set && has) t.removeWhere((e) => e == favorite);
     return t;
   }
+
+  // --- 検索エイリアス定義とユーティリティ ---
+  /// 予約タグ（正規）に対する自然言語エイリアス
+  /// 例: '__favorite__' <- ['お気に入り', '好き']
+  static const Map<String, List<String>> aliases = {
+    favorite: ['お気に入り', '好き'],
+  };
+
+  /// エイリアスから正規タグを引くための逆引きマップ（小文字化したキーで一致）
+  static final Map<String, String> _aliasToCanonical = {
+    // 正規名自身も自分にマップしておく（大小区別なし）
+    favorite.toLowerCase(): favorite,
+    for (final entry in aliases.entries)
+      for (final a in entry.value) a.toLowerCase(): entry.key,
+  };
+
+  /// 単一トークンを正規化（エイリアスを正規タグに変換、未登録はそのまま小文字化）
+  static String normalizeToken(String token) {
+    final k = token.trim().toLowerCase();
+    if (k.isEmpty) return k;
+    return _aliasToCanonical[k] ?? k;
+  }
+
+  /// トークン配列を正規化
+  static List<String> normalizeTokens(Iterable<String> tokens) {
+    return tokens.map(normalizeToken).where((t) => t.isNotEmpty).toList();
+  }
+
+  /// 入力中の最後のトークンに対して、エイリアス候補を返す
+  static List<String> suggestAliasTerms(String inputLastToken) {
+    final q = inputLastToken.trim().toLowerCase();
+    if (q.isEmpty) return const [];
+    final terms = <String>{};
+    for (final list in aliases.values) {
+      for (final a in list) {
+        if (a.toLowerCase().contains(q)) terms.add(a);
+      }
+    }
+    return terms.take(20).toList();
+  }
 }

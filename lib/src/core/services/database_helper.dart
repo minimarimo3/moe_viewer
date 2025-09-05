@@ -1,5 +1,6 @@
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
+import '../utils/pixiv_utils.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -154,10 +155,8 @@ class DatabaseHelper {
 
   // 複数タグAND検索（大文字小文字を無視）し、該当パスのみ返す
   Future<List<String>> searchByTags(List<String> tokens) async {
-    final normalized = tokens
-        .map((t) => t.trim().toLowerCase())
-        .where((t) => t.isNotEmpty)
-        .toList();
+    // エイリアスを正規タグに正規化（未登録は小文字化）
+    final normalized = ReservedTags.normalizeTokens(tokens);
     if (normalized.isEmpty) return <String>[];
 
     final db = await instance.database;
