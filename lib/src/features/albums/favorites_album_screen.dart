@@ -2,12 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
+import 'package:provider/provider.dart';
 
-import '../../common_widgets/file_thumbnail.dart';
 import '../../common_widgets/pie_menu_widget.dart';
 import '../../common_widgets/loading_view.dart';
 import '../../core/services/thumbnail_service.dart';
 import '../../core/services/favorites_service.dart';
+import '../../core/providers/settings_provider.dart';
 import '../detail/detail_screen.dart';
 
 /// 仮想アルバム「お気に入り」
@@ -98,81 +99,102 @@ class _FavoritesAlbumScreenState extends State<FavoritesAlbumScreen> {
     );
   }
 
-  // お気に入り用の画像リスト表示（元の比率を保持）
+  // お気に入り用の画像リスト表示（グリッド形式）
   Widget _buildFavoriteImageList() {
-    return ListView.builder(
-      controller: _autoController,
-      padding: const EdgeInsets.all(8.0),
-      itemCount: _files.length,
-      itemBuilder: (context, index) {
-        final file = _files[index];
+    return Consumer<SettingsProvider>(
+      builder: (context, settings, child) {
+        final crossAxisCount = settings.gridCrossAxisCount;
 
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4.0),
-          child: GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      DetailScreen(imageFileList: _files, initialIndex: index),
-                ),
-              );
-            },
-            onLongPressStart: (details) {
-              _pieMenuKey.currentState?.openMenuForItem(
-                file,
-                details.globalPosition,
-              );
-            },
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8.0),
-              child: _buildAspectRatioImage(file, index),
-            ),
+        return GridView.builder(
+          controller: _autoController,
+          padding: const EdgeInsets.all(8.0),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 4.0,
+            mainAxisSpacing: 4.0,
+            childAspectRatio: 0.75, // やや縦長のデフォルト比率
           ),
+          itemCount: _files.length,
+          itemBuilder: (context, index) {
+            final file = _files[index];
+
+            return GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DetailScreen(
+                      imageFileList: _files,
+                      initialIndex: index,
+                    ),
+                  ),
+                );
+              },
+              onLongPressStart: (details) {
+                _pieMenuKey.currentState?.openMenuForItem(
+                  file,
+                  details.globalPosition,
+                );
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8.0),
+                child: _buildAspectRatioImageForGrid(file, index),
+              ),
+            );
+          },
         );
       },
     );
   }
 
-  // 元の比率を保った画像表示
-  Widget _buildAspectRatioImage(File file, int index) {
-    return FutureBuilder<Size>(
-      future: _getImageSize(file),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done &&
-            snapshot.hasData &&
-            snapshot.data != null) {
-          final size = snapshot.data!;
-          final aspectRatio = size.width / size.height;
+  // グリッド表示用：元の比率を保った画像表示
+  Widget _buildAspectRatioImageForGrid(File file, int index) {
+    return Consumer<SettingsProvider>(
+      builder: (context, settings, child) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final gridItemWidth =
+            (screenWidth - 16.0 - (settings.gridCrossAxisCount - 1) * 4.0) /
+            settings.gridCrossAxisCount;
+        final thumbnailSize =
+            (gridItemWidth * MediaQuery.of(context).devicePixelRatio).round();
 
-          return AspectRatio(
-            aspectRatio: aspectRatio.clamp(0.1, 10.0), // 極端な比率を制限
-            child: FileThumbnail(
-              imageFile: file,
-              width: MediaQuery.of(context).size.width.round(),
-              highQuality: true, // お気に入りでは高品質
-            ),
-          );
-        } else if (snapshot.hasError) {
-          return Container(
-            height: 200,
-            color: Colors.grey[300],
-            child: const Icon(Icons.error, size: 50),
-          );
-        } else {
-          return Container(
-            height: 200,
-            color: Colors.grey[200],
-            child: const Center(
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          );
-        }
+        return FutureBuilder<Size>(
+          future: _getImageSize(file),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.done &&
+                snapshot.hasData &&
+                snapshot.data != null) {
+              // 画像全体が見えるようにBoxFit.containを使用
+              return Image.file(
+                file,
+                fit: BoxFit.contain, // 画像全体が見えるように
+                cacheWidth: thumbnailSize,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: Colors.grey[300],
+                    child: const Icon(Icons.broken_image, size: 50),
+                  );
+                },
+              );
+            } else if (snapshot.hasError) {
+              return Container(
+                color: Colors.grey[300],
+                child: const Icon(Icons.error, size: 50),
+              );
+            } else {
+              return Container(
+                color: Colors.grey[200],
+                child: const Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              );
+            }
+          },
+        );
       },
     );
   }
