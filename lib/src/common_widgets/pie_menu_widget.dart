@@ -32,6 +32,7 @@ class PieMenuWidgetState extends State<PieMenuWidget> {
   bool _isMenuOpen = false;
   String? _currentTargetPath;
   String? _currentPixivId;
+  bool? _isCurrentFavorite;
 
   void openMenuForItem(dynamic item, [Offset? globalPosition]) async {
     log(
@@ -55,11 +56,16 @@ class PieMenuWidgetState extends State<PieMenuWidget> {
     final id = PixivUtils.extractPixivId(path);
     if (!mounted) return;
 
-    log('Resolved path: $path, pixivId: $id');
+    // 現在のお気に入り状態を取得
+    final fav = await FavoritesService.instance.isFavorite(path);
+    if (!mounted) return;
+
+    log('Resolved path: $path, pixivId: $id, isFavorite: $fav');
 
     setState(() {
       _currentTargetPath = path;
       _currentPixivId = id;
+      _isCurrentFavorite = fav;
     });
 
     // setState後のフレームで開く
@@ -141,17 +147,25 @@ class PieMenuWidgetState extends State<PieMenuWidget> {
           child: const Icon(Icons.open_in_new),
         ),
       PieAction(
-        tooltip: const Text('お気に入りを切替'),
+        tooltip: Text((_isCurrentFavorite ?? false) ? 'お気に入りを解除' : 'お気に入りに登録'),
         onSelect: () async {
           final path = _currentTargetPath;
           if (path == null) return;
           final newState = await FavoritesService.instance.toggleFavorite(path);
           if (!mounted) return;
+          // ローカル状態を更新
+          setState(() {
+            _isCurrentFavorite = newState;
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました')),
           );
         },
-        child: const Icon(Icons.favorite_border),
+        child: Icon(
+          (_isCurrentFavorite ?? false)
+              ? Icons.favorite
+              : Icons.favorite_border,
+        ),
       ),
       PieAction(
         tooltip: const Text('アルバムに追加'),
