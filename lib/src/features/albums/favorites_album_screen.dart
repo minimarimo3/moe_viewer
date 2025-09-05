@@ -1,14 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 
 import '../../common_widgets/file_thumbnail.dart';
 import '../../common_widgets/pie_menu_widget.dart';
 import '../../common_widgets/loading_view.dart';
 import '../../core/services/thumbnail_service.dart';
-import '../../core/providers/settings_provider.dart';
 import '../../core/services/favorites_service.dart';
 import '../detail/detail_screen.dart';
 
@@ -36,28 +34,44 @@ class _FavoritesAlbumScreenState extends State<FavoritesAlbumScreen> {
 
   Future<void> _load() async {
     final files = await FavoritesService.instance.listFavoriteFiles();
-    // 画面表示前に見える範囲のサムネイルを生成
-    try {
-      final crossAxisCount = Provider.of<SettingsProvider>(
-        context,
-        listen: false,
-      ).gridCrossAxisCount;
-      final screenWidth = MediaQuery.of(context).size.width;
-      final dpr = MediaQuery.of(context).devicePixelRatio;
-      final tileSize = (screenWidth / crossAxisCount * dpr).round();
-      final viewportHeight = MediaQuery.of(context).size.height;
-      final rows = (viewportHeight / (screenWidth / crossAxisCount)).ceil() + 1;
-      final visibleCount = (crossAxisCount * rows).clamp(0, files.length);
-      final targets = files.take(visibleCount).toList();
-      await Future.wait(
-        targets.map((f) => generateAndCacheGridThumbnail(f.path, tileSize)),
-      );
-    } catch (_) {}
+
     if (!mounted) return;
     setState(() {
       _files = files;
       _loading = false;
     });
+
+    // バックグラウンドでサムネイルを生成
+    _precacheVisibleThumbnails();
+  }
+
+  Future<void> _precacheVisibleThumbnails() async {
+    if (_files.isEmpty) return;
+
+    try {
+      final screenWidth = MediaQuery.of(context).size.width;
+      final targets = _files.take(20).toList(); // 最初の20枚だけプリキャッシュ
+
+      const batchSize = 4;
+      for (int i = 0; i < targets.length; i += batchSize) {
+        final batch = targets.skip(i).take(batchSize);
+        await Future.wait(
+          batch.map(
+            (f) => generateAndCacheGridThumbnail(
+              f.path,
+              screenWidth.round(),
+              highQuality: true, // お気に入りでは高品質
+            ),
+          ),
+        );
+
+        if (i + batchSize < targets.length) {
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+      }
+    } catch (_) {
+      // エラーは静かに無視
+    }
   }
 
   @override
@@ -68,9 +82,6 @@ class _FavoritesAlbumScreenState extends State<FavoritesAlbumScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final crossAxisCount = Provider.of<SettingsProvider>(
-      context,
-    ).gridCrossAxisCount;
     return Scaffold(
       appBar: AppBar(title: const Text('お気に入り')),
       body: _loading
@@ -82,49 +93,112 @@ class _FavoritesAlbumScreenState extends State<FavoritesAlbumScreen> {
               // albumIdは無し（仮想）
               onRemove: _load, // 互換のため残す
               onFavoriteToggled: _load, // トグル即時反映
-              child: GridView.builder(
-                padding: const EdgeInsets.all(2),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  mainAxisSpacing: 2,
-                  crossAxisSpacing: 2,
-                ),
-                itemCount: _files.length,
-                itemBuilder: (context, index) {
-                  final f = _files[index];
-                  final thumbnailSize =
-                      (MediaQuery.of(context).size.width /
-                              crossAxisCount *
-                              MediaQuery.of(context).devicePixelRatio)
-                          .round();
-                  return GestureDetector(
-                    onLongPressStart: (d) => _pieMenuKey.currentState
-                        ?.openMenuForItem(f, d.globalPosition),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => DetailScreen(
-                            imageFileList: _files,
-                            initialIndex: index,
-                          ),
-                        ),
-                      );
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: RepaintBoundary(
-                        child: FileThumbnail(
-                          key: ValueKey('${f.path}_$thumbnailSize'),
-                          imageFile: f,
-                          width: thumbnailSize,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
+              child: _buildFavoriteImageList(),
             ),
     );
+  }
+
+  // お気に入り用の画像リスト表示（元の比率を保持）
+  Widget _buildFavoriteImageList() {
+    return ListView.builder(
+      controller: _autoController,
+      padding: const EdgeInsets.all(8.0),
+      itemCount: _files.length,
+      itemBuilder: (context, index) {
+        final file = _files[index];
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4.0),
+          child: GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      DetailScreen(imageFileList: _files, initialIndex: index),
+                ),
+              );
+            },
+            onLongPressStart: (details) {
+              _pieMenuKey.currentState?.openMenuForItem(
+                file,
+                details.globalPosition,
+              );
+            },
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8.0),
+              child: _buildAspectRatioImage(file, index),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // 元の比率を保った画像表示
+  Widget _buildAspectRatioImage(File file, int index) {
+    return FutureBuilder<Size>(
+      future: _getImageSize(file),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done &&
+            snapshot.hasData &&
+            snapshot.data != null) {
+          final size = snapshot.data!;
+          final aspectRatio = size.width / size.height;
+
+          return AspectRatio(
+            aspectRatio: aspectRatio.clamp(0.1, 10.0), // 極端な比率を制限
+            child: FileThumbnail(
+              imageFile: file,
+              width: MediaQuery.of(context).size.width.round(),
+              highQuality: true, // お気に入りでは高品質
+            ),
+          );
+        } else if (snapshot.hasError) {
+          return Container(
+            height: 200,
+            color: Colors.grey[300],
+            child: const Icon(Icons.error, size: 50),
+          );
+        } else {
+          return Container(
+            height: 200,
+            color: Colors.grey[200],
+            child: const Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+      },
+    );
+  }
+
+  // 画像サイズを取得するキャッシュ機能付きメソッド
+  final Map<String, Future<Size>> _imageSizeCache = {};
+
+  Future<Size> _getImageSize(File file) {
+    final path = file.path;
+    if (_imageSizeCache.containsKey(path)) {
+      return _imageSizeCache[path]!;
+    }
+
+    final future = _computeImageSize(file);
+    _imageSizeCache[path] = future;
+    return future;
+  }
+
+  Future<Size> _computeImageSize(File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      final image = await decodeImageFromList(bytes);
+      return Size(image.width.toDouble(), image.height.toDouble());
+    } catch (e) {
+      // エラーの場合はデフォルト比率を返す
+      return const Size(4, 3); // 4:3のデフォルト比率
+    }
   }
 }

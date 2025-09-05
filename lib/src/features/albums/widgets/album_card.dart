@@ -207,6 +207,8 @@ class _MosaicCover extends StatelessWidget {
           imageFile: file,
           width: px,
           key: ValueKey('${file.path}_$px'),
+          // アルバム表示では高品質を優先
+          highQuality: true,
         ),
       ),
     );

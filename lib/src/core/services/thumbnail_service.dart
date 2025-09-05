@@ -68,17 +68,74 @@ Future<Uint8List> _generateThumbnail(ThumbnailRequest request) async {
       image,
       width: targetWidth,
       height: targetHeight,
-      interpolation: img.Interpolation.average, // 高速な補間方法に変更
+      interpolation: img.Interpolation.average, // 高速な補間方法
     );
 
     final result = Uint8List.fromList(
-      img.encodeJpg(thumbnail, quality: 85), // 品質を少し下げて高速化
+      img.encodeJpg(thumbnail, quality: 85), // 標準品質
     );
     log('Thumbnail generation completed for: $filePath');
 
     return result;
   } catch (e) {
     log('Thumbnail generation failed for $filePath: $e');
+    // エラーの場合は空のバイト配列を返す
+    return Uint8List(0);
+  }
+}
+
+// 高品質版のサムネイル生成関数（アルバム表示用）
+Future<Uint8List> _generateHighQualityThumbnail(
+  ThumbnailRequest request,
+) async {
+  final String filePath = request.filePath;
+  final file = File(filePath);
+
+  log('Generating high quality thumbnail for: $filePath');
+
+  try {
+    // ファイルサイズをチェック（高品質版では少し大きめまで許可）
+    final fileStat = await file.stat();
+    if (fileStat.size > 100 * 1024 * 1024) {
+      // 100MB以上の場合はスキップ
+      throw Exception('File too large: ${fileStat.size} bytes');
+    }
+
+    final bytes = await file.readAsBytes();
+    final image = img.decodeImage(bytes);
+
+    if (image == null) {
+      throw Exception('Failed to decode image');
+    }
+
+    // 高品質版では最大サイズを大きめに設定
+    final maxDimension = 4096;
+    int targetWidth = request.width;
+    int? targetHeight = request.height;
+
+    if (targetWidth > maxDimension) {
+      final scale = maxDimension / targetWidth;
+      targetWidth = maxDimension;
+      if (targetHeight != null) {
+        targetHeight = (targetHeight * scale).round();
+      }
+    }
+
+    final thumbnail = img.copyResize(
+      image,
+      width: targetWidth,
+      height: targetHeight,
+      interpolation: img.Interpolation.cubic, // 高品質な補間
+    );
+
+    final result = Uint8List.fromList(
+      img.encodeJpg(thumbnail, quality: 95), // 高品質
+    );
+    log('High quality thumbnail generation completed for: $filePath');
+
+    return result;
+  } catch (e) {
+    log('High quality thumbnail generation failed for $filePath: $e');
     // エラーの場合は空のバイト配列を返す
     return Uint8List(0);
   }
@@ -97,6 +154,18 @@ Future<Uint8List> computeThumbnail(
   return compute(
     _generateThumbnail,
     ThumbnailRequest(filePath, width, height, baseCachePath: baseCachePath),
+  );
+}
+
+// 高品質版のサムネイル生成（アルバム表示用）
+Future<Uint8List> computeHighQualityThumbnail(
+  String filePath,
+  int width, {
+  int? height,
+}) async {
+  return compute(
+    _generateHighQualityThumbnail,
+    ThumbnailRequest(filePath, width, height),
   );
 }
 
@@ -171,13 +240,18 @@ Future<void> generateAndCacheGridThumbnail(
   String filePath,
   int width, {
   int? height,
+  bool highQuality = false, // 高品質オプション
 }) async {
   try {
-    final data = await computeThumbnail(filePath, width, height: height);
+    final data = highQuality
+        ? await computeHighQualityThumbnail(filePath, width, height: height)
+        : await computeThumbnail(filePath, width, height: height);
     if (data.isEmpty) return;
     final tempDir = await getTemporaryDirectory();
     final h = height?.toString() ?? 'auto';
-    final cacheFileName = 'thumb_${filePath.hashCode}_w${width}_h$h.jpg';
+    final quality = highQuality ? 'hq' : 'std';
+    final cacheFileName =
+        'thumb_${filePath.hashCode}_w${width}_h${h}_$quality.jpg';
     final cacheFile = File(p.join(tempDir.path, cacheFileName));
     if (await cacheFile.exists()) return; // 既にあるならスキップ
     await cacheFile.writeAsBytes(data, flush: false);

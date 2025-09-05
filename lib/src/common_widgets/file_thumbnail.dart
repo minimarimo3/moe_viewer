@@ -16,12 +16,14 @@ class FileThumbnail extends StatefulWidget {
   final File imageFile;
   final int width;
   final int? height;
+  final bool highQuality; // アルバム表示など高品質が必要な場合のオプション
 
   const FileThumbnail({
     super.key,
     required this.imageFile,
     required this.width,
     this.height,
+    this.highQuality = false,
   });
 
   @override
@@ -51,7 +53,8 @@ class _FileThumbnailState extends State<FileThumbnail> {
 
   String _getCacheKey() {
     final h = widget.height?.toString() ?? 'auto';
-    return '${widget.imageFile.path}_w${widget.width}_h$h';
+    final quality = widget.highQuality ? 'hq' : 'std';
+    return '${widget.imageFile.path}_w${widget.width}_h${h}_$quality';
   }
 
   Future<void> _loadOrGenerateThumbnail() async {
@@ -73,8 +76,9 @@ class _FileThumbnailState extends State<FileThumbnail> {
 
     final tempDir = await getTemporaryDirectory();
     final h = widget.height?.toString() ?? 'auto';
+    final quality = widget.highQuality ? 'hq' : 'std';
     final cacheFileName =
-        'thumb_${widget.imageFile.path.hashCode}_w${widget.width}_h$h.jpg';
+        'thumb_${widget.imageFile.path.hashCode}_w${widget.width}_h${h}_$quality.jpg';
     final cacheFile = File(p.join(tempDir.path, cacheFileName));
 
     try {
@@ -83,11 +87,17 @@ class _FileThumbnailState extends State<FileThumbnail> {
         data = await cacheFile.readAsBytes();
       } else {
         data = await thumbnailPool.withResource(() {
-          return computeThumbnail(
-            widget.imageFile.path,
-            widget.width,
-            height: widget.height,
-          );
+          return widget.highQuality
+              ? computeHighQualityThumbnail(
+                  widget.imageFile.path,
+                  widget.width,
+                  height: widget.height,
+                )
+              : computeThumbnail(
+                  widget.imageFile.path,
+                  widget.width,
+                  height: widget.height,
+                );
         });
 
         // 非同期でディスクキャッシュに保存

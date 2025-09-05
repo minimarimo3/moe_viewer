@@ -9,15 +9,13 @@ import '../../core/models/album.dart';
 import '../../core/services/albums_service.dart';
 import '../../core/services/favorites_service.dart';
 import 'favorites_album_screen.dart';
-import '../gallery/widgets/gallery_grid_widget.dart';
+import '../detail/detail_screen.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import '../../common_widgets/pie_menu_widget.dart';
 import '../../core/providers/settings_provider.dart';
 import 'package:provider/provider.dart';
-import '../detail/detail_screen.dart';
 import '../../common_widgets/file_thumbnail.dart';
 import '../../common_widgets/loading_view.dart';
-import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import 'widgets/album_card.dart';
 import '../../core/services/thumbnail_service.dart';
 // 追加: ZIP作成/保存/アップロード関連
@@ -282,7 +280,20 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       widget.album.id,
       sortMode: _sortMode,
     );
-    // 画面表示前に見える範囲のサムネイルを生成
+
+    if (!mounted) return;
+    setState(() {
+      _files = files;
+      _loading = false;
+    });
+
+    // バックグラウンドでサムネイルを生成（UI表示後）
+    _precacheVisibleThumbnails();
+  }
+
+  Future<void> _precacheVisibleThumbnails() async {
+    if (_files.isEmpty) return;
+
     try {
       final crossAxisCount = Provider.of<SettingsProvider>(
         context,
@@ -293,25 +304,170 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       final tileSize = (screenWidth / crossAxisCount * dpr).round();
       final viewportHeight = MediaQuery.of(context).size.height;
       final rows =
-          (viewportHeight / (screenWidth / crossAxisCount)).ceil() + 1; // 少し多め
-      final visibleCount = (crossAxisCount * rows).clamp(0, files.length);
-      final targets = files.take(visibleCount).toList();
-      await Future.wait(
-        targets.map((f) => generateAndCacheGridThumbnail(f.path, tileSize)),
-      );
-    } catch (_) {}
-    if (!mounted) return;
-    setState(() {
-      _files = files;
-      _loading = false;
-    });
+          (viewportHeight / (screenWidth / crossAxisCount)).ceil() +
+          2; // 余裕を持たせる
+      final visibleCount = (crossAxisCount * rows).clamp(0, _files.length);
+
+      // 見える範囲のサムネイルを高品質で事前生成
+      final targets = _files.take(visibleCount).toList();
+
+      // 並列処理数を制限してメモリ使用量を抑制
+      const batchSize = 4;
+      for (int i = 0; i < targets.length; i += batchSize) {
+        final batch = targets.skip(i).take(batchSize);
+        await Future.wait(
+          batch.map(
+            (f) => generateAndCacheGridThumbnail(
+              f.path,
+              tileSize,
+              highQuality: true, // アルバムでは高品質
+            ),
+          ),
+        );
+
+        // バッチ間で少し休憩してUIをブロックしない
+        if (i + batchSize < targets.length) {
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+      }
+    } catch (e) {
+      // エラーは静かに無視
+      dev.log('Thumbnail precaching error: $e');
+    }
+  }
+
+  // アルバム用の画像リスト表示（元の比率を保持）
+  Widget _buildAlbumImageList() {
+    return ListView.builder(
+      controller: _autoController,
+      padding: const EdgeInsets.all(8.0),
+      itemCount: _files.length,
+      itemBuilder: (context, index) {
+        final file = _files[index];
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4.0),
+          child: GestureDetector(
+            onTap: () {
+              if (_selectMode) {
+                final p = _files[index].path;
+                setState(() {
+                  if (_selectedPaths.contains(p)) {
+                    _selectedPaths.remove(p);
+                  } else {
+                    _selectedPaths.add(p);
+                  }
+                });
+              } else {
+                // 詳細画面に遷移
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DetailScreen(
+                      imageFileList: _files,
+                      initialIndex: index,
+                    ),
+                  ),
+                );
+              }
+            },
+            onLongPress: () {
+              if (_selectMode || _reorderUIActive) return;
+              _pieMenuKey.currentState?.openMenuForItem(
+                file,
+                const Offset(0, 0), // 適当な位置
+              );
+            },
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8.0),
+                border: _selectedPaths.contains(file.path)
+                    ? Border.all(
+                        color: Theme.of(context).primaryColor,
+                        width: 3,
+                      )
+                    : null,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8.0),
+                child: _buildAspectRatioImage(file, index),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // 元の比率を保った画像表示
+  Widget _buildAspectRatioImage(File file, int index) {
+    return FutureBuilder<Size>(
+      future: _getImageSize(file),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done &&
+            snapshot.hasData &&
+            snapshot.data != null) {
+          final size = snapshot.data!;
+          final aspectRatio = size.width / size.height;
+
+          return AspectRatio(
+            aspectRatio: aspectRatio.clamp(0.1, 10.0), // 極端な比率を制限
+            child: FileThumbnail(
+              imageFile: file,
+              width: MediaQuery.of(context).size.width.round(),
+              highQuality: true, // アルバムでは高品質
+            ),
+          );
+        } else if (snapshot.hasError) {
+          return Container(
+            height: 200,
+            color: Colors.grey[300],
+            child: const Icon(Icons.error, size: 50),
+          );
+        } else {
+          return Container(
+            height: 200,
+            color: Colors.grey[200],
+            child: const Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+      },
+    );
+  }
+
+  // 画像サイズを取得するキャッシュ機能付きメソッド
+  final Map<String, Future<Size>> _imageSizeCache = {};
+
+  Future<Size> _getImageSize(File file) {
+    final path = file.path;
+    if (_imageSizeCache.containsKey(path)) {
+      return _imageSizeCache[path]!;
+    }
+
+    final future = _computeImageSize(file);
+    _imageSizeCache[path] = future;
+    return future;
+  }
+
+  Future<Size> _computeImageSize(File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      final image = await decodeImageFromList(bytes);
+      return Size(image.width.toDouble(), image.height.toDouble());
+    } catch (e) {
+      // エラーの場合はデフォルト比率を返す
+      return const Size(4, 3); // 4:3のデフォルト比率
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final crossAxisCount = Provider.of<SettingsProvider>(
-      context,
-    ).gridCrossAxisCount;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.album.name),
@@ -359,46 +515,14 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
           : _files.isEmpty
           ? const Center(child: Text('このアルバムにはまだ画像がありません'))
           : (_reorderUIActive
-                ? _buildManualGrid(crossAxisCount)
+                ? _buildManualReorderList()
                 : PieMenuWidget(
                     key: _pieMenuKey,
                     albumId: widget.album.id,
                     // アルバムから削除後に一覧を更新
                     onRemove: _load,
 
-                    child: GalleryGridWidget(
-                      displayItems: _files,
-                      imageFilesForDetail: _files,
-                      crossAxisCount: crossAxisCount,
-                      autoScrollController: _autoController,
-                      onLongPress: (item, pos) {
-                        if (_selectMode || _reorderUIActive) return;
-                        _pieMenuKey.currentState?.openMenuForItem(item, pos);
-                      },
-                      onItemTap: (index, item) {
-                        if (_selectMode) {
-                          final p = _files[index].path;
-                          setState(() {
-                            if (_selectedPaths.contains(p)) {
-                              _selectedPaths.remove(p);
-                            } else {
-                              _selectedPaths.add(p);
-                            }
-                          });
-                        } else {
-                          // 通常遷移（詳細画面）
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => DetailScreen(
-                                imageFileList: _files,
-                                initialIndex: index,
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                    ),
+                    child: _buildAlbumImageList(),
                   )),
       floatingActionButton: _reorderUIActive
           ? FloatingActionButton.extended(
@@ -736,48 +860,63 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     );
   }
 
-  Widget _buildManualGrid(int crossAxisCount) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final thumbnailSize =
-        (screenWidth / crossAxisCount * MediaQuery.of(context).devicePixelRatio)
-            .round();
+  Widget _buildManualReorderList() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
           child: Text(
-            '手動並び替え中：ドラッグで順番を変更できます',
+            '手動並び替え中：上下にドラッグで順番を変更できます',
             style: TextStyle(fontSize: 13, color: Colors.grey),
           ),
         ),
         Expanded(
-          child: ReorderableGridView.count(
-            crossAxisCount: crossAxisCount,
-            mainAxisSpacing: 2,
-            crossAxisSpacing: 2,
-            dragWidgetBuilder: (index, child) => child,
+          child: ReorderableListView.builder(
+            itemCount: _files.length,
             onReorder: (oldIndex, newIndex) {
               setState(() {
+                if (newIndex > oldIndex) {
+                  newIndex -= 1;
+                }
                 final item = _files.removeAt(oldIndex);
                 _files.insert(newIndex, item);
                 _reorderDirty = true; // 変更フラグを立てる
               });
             },
-            children: [
-              for (var i = 0; i < _files.length; i++)
-                ClipRRect(
-                  key: ValueKey(_files[i].path),
-                  borderRadius: BorderRadius.circular(6),
-                  child: RepaintBoundary(
-                    child: FileThumbnail(
-                      key: ValueKey('${_files[i].path}_$thumbnailSize'),
-                      imageFile: _files[i],
-                      width: thumbnailSize,
-                    ),
+            itemBuilder: (context, index) {
+              final file = _files[index];
+              return Container(
+                key: ValueKey(file.path),
+                margin: const EdgeInsets.symmetric(
+                  vertical: 4.0,
+                  horizontal: 8.0,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8.0),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8.0),
+                  child: Row(
+                    children: [
+                      // ドラッグハンドル
+                      Container(
+                        width: 40,
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        color: Colors.grey.shade200,
+                        child: const Icon(
+                          Icons.drag_handle,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      // 画像プレビュー
+                      Expanded(child: _buildAspectRatioImage(file, index)),
+                    ],
                   ),
                 ),
-            ],
+              );
+            },
           ),
         ),
       ],
