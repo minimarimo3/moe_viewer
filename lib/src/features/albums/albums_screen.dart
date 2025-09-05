@@ -533,14 +533,19 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       }
     } else if (mode == 'share') {
       File? zipFile;
-      await _showProgressDialog('ZIPを作成中…', () async {
-        zipFile = await _createAlbumZipToTemp(widget.album.name, _files);
-      });
-      if (zipFile == null) return;
 
-      final code = _randomSixDigits();
-      final url = 'https://file-share.nijimi.yuukei.moe/$code';
       try {
+        // ZIP作成
+        await _showProgressDialog('ZIPを作成中…', () async {
+          zipFile = await _createAlbumZipToTemp(widget.album.name, _files);
+        });
+
+        if (zipFile == null) return;
+
+        final code = _randomSixDigits();
+        final url = 'https://file-share.nijimi.yuukei.moe/$code';
+
+        // アップロード
         await _showProgressDialog('アップロード中…', () async {
           final dio = Dio();
           final fileLen = await zipFile!.length();
@@ -559,6 +564,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             ),
           );
         });
+
         try {
           await zipFile!.delete();
         } catch (_) {}
@@ -591,8 +597,11 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         );
       } catch (e) {
         try {
-          await zipFile!.delete();
+          if (zipFile != null) {
+            await zipFile!.delete();
+          }
         } catch (_) {}
+
         if (!mounted) return;
         ScaffoldMessenger.of(
           context,
@@ -605,31 +614,38 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     String message,
     Future<void> Function() task,
   ) async {
-    // シンプルな進捗モーダル
-    unawaited(
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          content: Row(
-            children: [
-              const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 3),
-              ),
-              const SizedBox(width: 16),
-              Expanded(child: Text(message)),
-            ],
-          ),
+    bool dialogShown = false;
+
+    // プログレスダイアログを表示
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+            const SizedBox(width: 16),
+            Expanded(child: Text(message)),
+          ],
         ),
       ),
-    );
+    ).then((_) {
+      // ダイアログが閉じられたときの処理
+      dialogShown = false;
+    });
+    dialogShown = true;
+
     try {
       await task();
+    } catch (e) {
+      rethrow;
     } finally {
-      if (mounted) {
-        Navigator.of(context, rootNavigator: true).maybePop();
+      if (mounted && dialogShown) {
+        Navigator.of(context).pop(); // rootNavigator: trueを削除
       }
     }
   }
@@ -791,7 +807,7 @@ Future<void> zipPathsToFile(
       final base = p.basename(path);
       final name = _uniqueNameTopLevel(base, nameCount);
       // ZIPファイル内では常にフォワードスラッシュを使用
-      final zipPath = '$albumDirName/$name';
+      final zipPath = p.join(albumDirName, name);
 
       // ファイルをアーカイブに追加
       final archiveFile = ArchiveFile(zipPath, bytes.length, bytes);
