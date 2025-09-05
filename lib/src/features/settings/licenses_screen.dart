@@ -738,7 +738,7 @@ Public License instead of this License.  But first, please read
       yield const LicenseEntryWithLineBreaks(
         ['jlpt_v3_vocabulary'],
         // CC BY で公開されている: https://www.tanos.co.uk/jlpt/sharing/
-        '「jlpt_v3_vocabulary.txt」 by Jonathan Waller is licensed under CC BY 4.0',
+        'URLを使用した共有の単語生成にはこれを使用しています。\n「jlpt_v3_vocabulary.txt」 by Jonathan Waller is licensed under CC BY 4.0',
       );
     });
   }

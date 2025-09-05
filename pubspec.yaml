@@ -81,6 +81,8 @@ dependencies:
   scrollable_positioned_list: ^0.3.8  # 一列用
   # グリッドでのドラッグ並び替え
   reorderable_grid_view: ^2.2.8
+  # ZIP作成用
+  archive: ^4.0.7
 
 dev_dependencies:
   flutter_test:

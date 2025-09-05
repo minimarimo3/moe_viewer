@@ -1,4 +1,8 @@
 import 'dart:io';
+import 'dart:math';
+import 'dart:async';
+import 'dart:isolate';
+import 'dart:developer' as dev show log;
 
 import 'package:flutter/material.dart';
 import '../../core/models/album.dart';
@@ -16,6 +20,14 @@ import '../../common_widgets/loading_view.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import 'widgets/album_card.dart';
 import '../../core/services/thumbnail_service.dart';
+// 追加: ZIP作成/保存/アップロード関連
+import 'package:archive/archive_io.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class AlbumsScreen extends StatefulWidget {
   const AlbumsScreen({super.key});
@@ -316,9 +328,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
           PopupMenuButton<String>(
             onSelected: (v) async {
               if (v == 'export') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('エクスポート機能は後で実装します')),
-                );
+                await _handleExport();
               } else if (v == 'sort') {
                 final selected = await _pickSortMode(context);
                 if (selected != null) {
@@ -338,7 +348,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
               }
             },
             itemBuilder: (_) => const [
-              PopupMenuItem(value: 'export', child: Text('ZIPでエクスポート（準備中）')),
+              PopupMenuItem(value: 'export', child: Text('ZIPでエクスポート')),
               PopupMenuItem(value: 'sort', child: Text('並び替え')),
             ],
           ),
@@ -444,6 +454,246 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     super.dispose();
   }
 
+  Future<void> _handleExport() async {
+    if (_files.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('このアルバムにはエクスポートする画像がありません')));
+      return;
+    }
+    final mode = await _pickExportMode(context);
+    if (mode == null) return;
+
+    if (mode == 'save') {
+      // Export: save
+      dev.log('Export album ${widget.album.name} (${widget.album.id})');
+      File? zipFile;
+      await _showProgressDialog('ZIPを作成中…', () async {
+        zipFile = await _createAlbumZipToTemp(widget.album.name, _files);
+      });
+      if (zipFile == null) return;
+
+      final fileName = _buildZipName(widget.album.name);
+      try {
+        if (kIsWeb) {
+          return;
+        } else {
+          String? targetDirPath;
+          if (Platform.isAndroid) {
+            targetDirPath = "/storage/emulated/0/Download";
+          } else {
+            try {
+              final dir = await getDownloadsDirectory();
+              dev.log('getDownloadsDirectory: ${dir?.path}');
+              if (dir != null && await dir.exists()) {
+                targetDirPath = dir.path;
+              }
+            } catch (_) {
+              dev.log("getDownloadsDirectory failed");
+            }
+          }
+          if (targetDirPath == null) {
+            final home = Platform.environment['HOME'];
+            if (home != null) {
+              final dl = Directory(p.join(home, 'Downloads'));
+              if (await dl.exists()) targetDirPath = dl.path;
+            }
+          }
+          if (targetDirPath == null) {
+            targetDirPath = await FilePicker.platform.getDirectoryPath(
+              dialogTitle: '保存先フォルダを選択',
+            );
+            if (targetDirPath == null) {
+              try {
+                await zipFile!.delete();
+              } catch (_) {}
+              return;
+            }
+          }
+          final targetPath = p.join(targetDirPath, fileName);
+          await File(zipFile!.path).copy(targetPath);
+          dev.log('Saved album zip to $targetPath');
+        }
+
+        try {
+          await zipFile!.delete();
+        } catch (_) {}
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('保存しました')));
+      } catch (e) {
+        try {
+          await zipFile!.delete();
+        } catch (_) {}
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('保存に失敗しました')));
+      }
+    } else if (mode == 'share') {
+      File? zipFile;
+      await _showProgressDialog('ZIPを作成中…', () async {
+        zipFile = await _createAlbumZipToTemp(widget.album.name, _files);
+      });
+      if (zipFile == null) return;
+
+      final code = _randomSixDigits();
+      final url = 'https://file-share.nijimi.yuukei.moe/$code';
+      try {
+        await _showProgressDialog('アップロード中…', () async {
+          final dio = Dio();
+          final fileLen = await zipFile!.length();
+          await dio.put(
+            url,
+            data: zipFile!.openRead(),
+            options: Options(
+              headers: {
+                'Content-Type': 'application/octet-stream',
+                'Content-Length': fileLen.toString(),
+              },
+              sendTimeout: const Duration(minutes: 5),
+              receiveTimeout: const Duration(minutes: 5),
+              validateStatus: (status) =>
+                  status != null && status >= 200 && status < 400,
+            ),
+          );
+        });
+        try {
+          await zipFile!.delete();
+        } catch (_) {}
+
+        if (!mounted) return;
+        await showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('共有URL'),
+            content: SelectableText(url),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: url));
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('URLをコピーしました')),
+                    );
+                  }
+                },
+                child: const Text('コピー'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('閉じる'),
+              ),
+            ],
+          ),
+        );
+      } catch (e) {
+        try {
+          await zipFile!.delete();
+        } catch (_) {}
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('アップロードに失敗しました')));
+      }
+    }
+  }
+
+  Future<void> _showProgressDialog(
+    String message,
+    Future<void> Function() task,
+  ) async {
+    // シンプルな進捗モーダル
+    unawaited(
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+              const SizedBox(width: 16),
+              Expanded(child: Text(message)),
+            ],
+          ),
+        ),
+      ),
+    );
+    try {
+      await task();
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).maybePop();
+      }
+    }
+  }
+
+  String _randomSixDigits() {
+    final r = Random.secure();
+    final n = r.nextInt(900000) + 100000; // 100000..999999
+    return n.toString();
+  }
+
+  String _sanitizeFilename(String input) {
+    // Windowsも考慮し、共通的に問題のある文字を除去
+    const invalid = r'[\\/:*?"<>|]';
+    final replaced = input.replaceAll(RegExp(invalid), '_');
+    final trimmed = replaced.trim();
+    return trimmed.isEmpty ? 'album' : trimmed;
+  }
+
+  String _buildZipName(String albumName) {
+    final name = _sanitizeFilename(albumName);
+    final now = DateTime.now();
+    final stamp =
+        '${now.year.toString().padLeft(4, '0')}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+    return '$name-$stamp.zip';
+  }
+
+  Future<File> _createAlbumZipToTemp(String albumName, List<File> files) async {
+    final tempDir = await Directory.systemTemp.createTemp('moe_viewer_');
+    final outPath = p.join(tempDir.path, _buildZipName(albumName));
+    final albumDirName = _sanitizeFilename(albumName);
+    final paths = files.map((e) => e.path).toList(growable: false);
+
+    dev.log('Creating ZIP for album: $albumName');
+    dev.log('Sanitized album dir name: $albumDirName');
+    dev.log('Number of files: ${files.length}');
+    dev.log('Output path: $outPath');
+
+    await Isolate.run(() async {
+      await zipPathsToFile(outPath, albumDirName, paths);
+    });
+    return File(outPath);
+  }
+
+  // _uniqueName は isolate 側で使用するトップレベル関数に移行
+
+  Future<String?> _pickExportMode(BuildContext context) async {
+    return showDialog<String>(
+      context: context,
+      builder: (_) => SimpleDialog(
+        title: const Text('ZIPでエクスポート'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, 'save'),
+            child: const Text('端末に保存'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, 'share'),
+            child: const Text('URLを使用して共有'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<String?> _pickSortMode(BuildContext context) async {
     const modes = {
       'added_desc': '追加が新しい順',
@@ -517,4 +767,71 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       ],
     );
   }
+}
+
+// ==== Isolate-safe helpers (top-level) ====
+Future<void> zipPathsToFile(
+  String outPath,
+  String albumDirName,
+  List<String> filePaths,
+) async {
+  final archive = Archive();
+  final nameCount = <String, int>{};
+
+  // ファイルをアーカイブに追加
+  for (final path in filePaths) {
+    try {
+      final file = File(path);
+      if (!await file.exists()) {
+        dev.log('File does not exist: $path');
+        continue; // ファイルが存在しない場合はスキップ
+      }
+
+      final bytes = await file.readAsBytes();
+      final base = p.basename(path);
+      final name = _uniqueNameTopLevel(base, nameCount);
+      // ZIPファイル内では常にフォワードスラッシュを使用
+      final zipPath = '$albumDirName/$name';
+
+      // ファイルをアーカイブに追加
+      final archiveFile = ArchiveFile(zipPath, bytes.length, bytes);
+      archive.addFile(archiveFile);
+
+      dev.log('Added file to archive: $zipPath (${bytes.length} bytes)');
+      dev.log('  Original path: $path');
+      dev.log('  Base name: $base');
+      dev.log('  Unique name: $name');
+      dev.log('  ZIP path: $zipPath');
+    } catch (e) {
+      // エラーログを出力してデバッグしやすくする
+      dev.log('Failed to add file to zip: $path, error: $e');
+    }
+  }
+
+  // アーカイブをファイルに書き込み
+  final zipBytes = ZipEncoder().encode(archive);
+  await File(outPath).writeAsBytes(zipBytes);
+  dev.log('ZIP file created: $outPath with ${archive.files.length} files');
+}
+
+String _uniqueNameTopLevel(String baseName, Map<String, int> counter) {
+  var name = baseName;
+  if (!counter.containsKey(baseName)) {
+    counter[baseName] = 0;
+    return name;
+  }
+  final stem = p.basenameWithoutExtension(baseName);
+  final ext = p.extension(baseName);
+  var idx = (counter[baseName] ?? 0) + 1;
+  while (true) {
+    final candidate = '$stem($idx)$ext';
+    if (!counter.containsKey(candidate)) {
+      counter[baseName] = idx;
+      counter[candidate] = 0;
+      name = candidate;
+      break;
+    }
+    idx++;
+  }
+  return name;
 }
