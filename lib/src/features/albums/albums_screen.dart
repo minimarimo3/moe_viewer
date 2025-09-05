@@ -14,7 +14,6 @@ import 'package:scroll_to_index/scroll_to_index.dart';
 import '../../common_widgets/pie_menu_widget.dart';
 import '../../core/providers/settings_provider.dart';
 import 'package:provider/provider.dart';
-import '../../common_widgets/file_thumbnail.dart';
 import '../../common_widgets/loading_view.dart';
 import 'widgets/album_card.dart';
 import '../../core/services/thumbnail_service.dart';
@@ -26,6 +25,8 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+// ドラッグ&ドロップでの並べ替え用
+import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 
 class AlbumsScreen extends StatefulWidget {
   const AlbumsScreen({super.key});
@@ -429,48 +430,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             );
           },
         );
-      },
-    );
-  }
-
-  // 元の比率を保った画像表示
-  Widget _buildAspectRatioImage(File file, int index) {
-    return FutureBuilder<Size>(
-      future: _getImageSize(file),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done &&
-            snapshot.hasData &&
-            snapshot.data != null) {
-          final size = snapshot.data!;
-          final aspectRatio = size.width / size.height;
-
-          return AspectRatio(
-            aspectRatio: aspectRatio.clamp(0.1, 10.0), // 極端な比率を制限
-            child: FileThumbnail(
-              imageFile: file,
-              width: MediaQuery.of(context).size.width.round(),
-              highQuality: true, // アルバムでは高品質
-            ),
-          );
-        } else if (snapshot.hasError) {
-          return Container(
-            height: 200,
-            color: Colors.grey[300],
-            child: const Icon(Icons.error, size: 50),
-          );
-        } else {
-          return Container(
-            height: 200,
-            color: Colors.grey[200],
-            child: const Center(
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          );
-        }
       },
     );
   }
@@ -947,65 +906,100 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   }
 
   Widget _buildManualReorderList() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Text(
-            '手動並び替え中：上下にドラッグで順番を変更できます',
-            style: TextStyle(fontSize: 13, color: Colors.grey),
-          ),
-        ),
-        Expanded(
-          child: ReorderableListView.builder(
-            itemCount: _files.length,
-            onReorder: (oldIndex, newIndex) {
-              setState(() {
-                if (newIndex > oldIndex) {
-                  newIndex -= 1;
-                }
-                final item = _files.removeAt(oldIndex);
-                _files.insert(newIndex, item);
-                _reorderDirty = true; // 変更フラグを立てる
-              });
-            },
-            itemBuilder: (context, index) {
-              final file = _files[index];
-              return Container(
-                key: ValueKey(file.path),
-                margin: const EdgeInsets.symmetric(
-                  vertical: 4.0,
-                  horizontal: 8.0,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8.0),
-                  border: Border.all(color: Colors.grey.shade300),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8.0),
-                  child: Row(
-                    children: [
-                      // ドラッグハンドル
-                      Container(
-                        width: 40,
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        color: Colors.grey.shade200,
-                        child: const Icon(
-                          Icons.drag_handle,
-                          color: Colors.grey,
-                        ),
+    return Consumer<SettingsProvider>(
+      builder: (context, settings, child) {
+        final crossAxisCount = settings.gridCrossAxisCount;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Text(
+                '手動並び替え中：画像をドラッグ&ドロップで順番を変更できます',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+            ),
+            Expanded(
+              child: ReorderableGridView.count(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: 4.0,
+                mainAxisSpacing: 4.0,
+                childAspectRatio: 0.75, // やや縦長のデフォルト比率
+                padding: const EdgeInsets.all(8.0),
+                onReorder: (oldIndex, newIndex) {
+                  setState(() {
+                    final item = _files.removeAt(oldIndex);
+                    _files.insert(newIndex, item);
+                    _reorderDirty = true; // 変更フラグを立てる
+                  });
+                },
+                children: _files.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final file = entry.value;
+
+                  return Container(
+                    key: ValueKey(file.path),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8.0),
+                      border: Border.all(color: Colors.grey.shade300, width: 2),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8.0),
+                      child: Stack(
+                        children: [
+                          // 画像本体
+                          _buildAspectRatioImageForGrid(file, index),
+                          // ドラッグハンドルアイコン
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Icon(
+                                Icons.drag_handle,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                          ),
+                          // 順番番号を表示
+                          Positioned(
+                            top: 4,
+                            left: 4,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '${index + 1}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      // 画像プレビュー
-                      Expanded(child: _buildAspectRatioImage(file, index)),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
