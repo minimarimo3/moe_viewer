@@ -491,11 +491,68 @@ class TfliteNhwcModelRunner implements ModelRunner {
       throw StateError('Unsupported chosen output dtype: $_chosenOutputType');
     }
 
-    final tags = _postprocess(probs, _labels);
-    log('Detected tags: $tags');
+    // --- 分類・整形: キャラクター名/特徴に分離、yearは除外、特徴は上位10件 ---
+    final scored = <_ScoredLabel>[];
+    for (int i = 0; i < math.min(probs.length, _labels.length); i++) {
+      scored.add(_ScoredLabel(_labels[i], probs[i]));
+    }
+
+    // 閾値を超えたもの。ゼロならフォールバックで上位Nを使う
+    const threshold = 0.35; // 既存の _postprocess と整合
+    final passed = scored.where((e) => e.score >= threshold).toList()
+      ..sort((a, b) => b.score.compareTo(a.score));
+    final effective = passed.isNotEmpty
+        ? passed
+        : (scored..sort((a, b) => b.score.compareTo(a.score)))
+              .take(50)
+              .toList();
+
+    // カテゴリ判定
+    bool _isYear(String label) {
+      if (_tagToCategory != null) {
+        final cat = _tagToCategory![label];
+        if (cat != null && cat.toLowerCase() == 'year') return true;
+      }
+      // フォールバック: 4桁の西暦っぽいものは除外
+      return RegExp(r'^(19|20)\d{2}$').hasMatch(label);
+    }
+
+    bool _isCharacter(String label) {
+      if (_tagToCategory != null) {
+        final cat = _tagToCategory![label]?.toLowerCase();
+        if (cat == 'character') return true;
+      }
+      return false;
+    }
+
+    final character = <String>[];
+    final features = <String>[];
+    for (final s in effective) {
+      final label = s.label;
+      if (_isYear(label)) continue; // year は無視
+      if (_isCharacter(label)) {
+        character.add(label);
+      } else {
+        features.add(label);
+      }
+    }
+
+    // 特徴は上位10件だけ
+    final featureTop = features.take(10).toList(growable: false);
+
+    // 結合（キャラを先頭にして特別扱い）
+    final merged = <String>[...character, ...featureTop];
+    if (merged.isEmpty) {
+      merged.add('タグが見つかりませんでした');
+    }
+
+    log('Detected characters: $character');
+    log('Detected features(top10): $featureTop');
 
     return {
-      'tags': tags.isEmpty ? ['タグが見つかりませんでした'] : tags,
+      'tags': merged,
+      'characterTags': character,
+      'featureTags': featureTop,
       'image': imgBundle.base64Image,
     };
   }
