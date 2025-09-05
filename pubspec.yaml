@@ -42,7 +42,7 @@ dependencies:
   # exifとか取得
   # image: ^3.2.0  # これは最新バージョンの4.5.4ではないが、flutter_tfliteが依存しているので3.2.0を使う
   image: ^4.5.4
-  exif: ^3.3.0
+  # exif: ^3.3.0
   # 設定情報を保存する
   shared_preferences: ^2.5.3 
   # 状態を管理する
@@ -64,7 +64,7 @@ dependencies:
   tflite_flutter: ^0.11.0
   # ONNX Runtime Flutter plugin (removed; using onnxruntime package instead)
   # Dart FFI ONNX Runtime package
-  onnxruntime: ^1.4.1
+  # onnxruntime: ^1.4.1
   # flutter_tflite: ^1.0.1
   # タグ用のSQL
   sqflite: ^2.4.2

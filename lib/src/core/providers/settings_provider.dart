@@ -53,7 +53,7 @@ class SettingsProvider extends ChangeNotifier {
   int get hashMismatchErrorVersion => _hashMismatchErrorVersion;
   void _emitHashMismatchError(String message) {
     _hashMismatchErrorMessage = message;
-    _hashMismatchErrorVersion++;
+    // _hashMismatchErrorVersion++;
     notifyListeners();
   }
 

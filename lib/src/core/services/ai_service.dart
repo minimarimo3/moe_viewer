@@ -12,7 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
-import 'package:onnxruntime/onnxruntime.dart' as ort;
+// import 'package:onnxruntime/onnxruntime.dart' as ort;
 
 // --- Isolate（別部署）で実行されるコード ---
 
@@ -720,6 +720,7 @@ class _ScoredLabel {
   _ScoredLabel(this.label, this.score);
 }
 
+/*
 /// ONNXランナー（[1,3,512,512] 対応、NCHW、ImageNet正規化）
 class OnnxModelRunner implements ModelRunner {
   late ort.OrtSession _session;
@@ -812,6 +813,7 @@ class OnnxModelRunner implements ModelRunner {
   @override
   Future<void> dispose() async {}
 }
+*/
 
 /// ランナー選択（ID/拡張子でディスパッチ可能）。
 ModelRunner _selectRunner(String modelId, String modelPath) {
@@ -822,8 +824,11 @@ ModelRunner _selectRunner(String modelId, String modelPath) {
     'camie-tagger-v2_float32',
     'camie-tagger-v2_float16',
   };
+  // 今tfliteしか実装していないのでアプリのサイズを抑えるためにコメントアウト
   if (onnxIds.contains(id) || modelPath.toLowerCase().endsWith('.onnx')) {
-    return OnnxModelRunner();
+    log('ONNXモデルを検出しましたが、ONNXランナーは未実装です。');
+    return TfliteModelRunner();
+    // return OnnxModelRunner();
   }
   const camieIds = {
     "camie-tagger-v2_float16_tflite",
