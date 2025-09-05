@@ -65,7 +65,7 @@ final List<AiModelDefinition> availableModels = [
     id: "camie-tagger-v2_simplified_float16_tflite",
     displayName: "camie-tagger-v2_simplified_float16(tflite)",
     modelFileName: "camie-tagger-v2_simplified_float16.tflite",
-    modelFileHash: "f80080d4403805cb896b22b649b52edduwu",
+    modelFileHash: "f80080d4403805cb896b22b649b52edd",
     modelDownloadUrl:
         "https://github.com/minimarimo3/moe_viewer/releases/download/v0.0.0/camie-tagger-v2_simplified_float16.tflite",
     labelFileName: "camie-tagger-v2-metadata.json",

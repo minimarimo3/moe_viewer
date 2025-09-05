@@ -424,6 +424,10 @@ class SettingsProvider extends ChangeNotifier {
       orElse: () => availableModels.first,
     );
 
+    // 解析開始直後にUI上のモデル切替を禁止するため、早めにフラグを立てる
+    _isAnalyzing = true;
+    notifyListeners();
+
     // 解析開始時にモデルをAiServiceに切り替え（ロード）
     await aiService.switchModel(selectedModelDef);
 
@@ -431,13 +435,13 @@ class SettingsProvider extends ChangeNotifier {
     await checkModelStatus(selectedModelDef);
     if (!_isModelDownloaded || _isModelCorrupted) {
       log("モデルが利用可能ではありません。ダウンロードまたは修復してください。");
+      // チェックに失敗した場合は解析を中止し、フラグを解除
+      _isAnalyzing = false;
+      notifyListeners();
       return;
     }
 
     await aiService.ensureModelLoaded(selectedModelDef);
-
-    _isAnalyzing = true;
-
     await updateOverallProgress();
     notifyListeners();
 

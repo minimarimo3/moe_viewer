@@ -188,8 +188,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Checkbox(
                         value: folder.isEnabled,
                         onChanged: (bool? value) {
-                          if (value != null)
+                          if (value != null) {
                             settings.toggleFolderEnabled(folder.path);
+                          }
                         },
                       ),
                       if (folder.isDeletable)
@@ -317,7 +318,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: const Text('AIモデルを選択'),
                 trailing: DropdownButton<String>(
                   value: settings.selectedModelId,
-                  onChanged: settings.isDownloading
+                  // モデルの切替はダウンロード中または解析中は許可しない
+                  onChanged: (settings.isDownloading || settings.isAnalyzing)
                       ? null
                       : (String? newModelId) async {
                           log("モデル変更のドロップダウンが呼ばれました");
@@ -398,8 +400,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                               ],
                                             ),
                                           );
-                                          if (confirm == true)
+                                          if (confirm == true) {
                                             settings.cancelDownload();
+                                          }
                                         },
                                       ),
                                     ],
@@ -703,8 +706,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                                   ],
                                                 ),
                                               );
-                                              if (confirm == true)
+                                              if (confirm == true) {
                                                 settings.cancelDownload();
+                                              }
                                             },
                                           ),
                                         ],
