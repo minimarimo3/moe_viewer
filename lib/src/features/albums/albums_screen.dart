@@ -363,62 +363,71 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
   // アルバム用の画像リスト表示（元の比率を保持）
   Widget _buildAlbumImageList() {
-    return ListView.builder(
-      controller: _autoController,
-      padding: const EdgeInsets.all(8.0),
-      itemCount: _files.length,
-      itemBuilder: (context, index) {
-        final file = _files[index];
+    return Consumer<SettingsProvider>(
+      builder: (context, settings, child) {
+        final crossAxisCount = settings.gridCrossAxisCount;
 
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4.0),
-          child: GestureDetector(
-            onTap: () {
-              if (_selectMode) {
-                final p = _files[index].path;
-                setState(() {
-                  if (_selectedPaths.contains(p)) {
-                    _selectedPaths.remove(p);
-                  } else {
-                    _selectedPaths.add(p);
-                  }
-                });
-              } else {
-                // 詳細画面に遷移
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => DetailScreen(
-                      imageFileList: _files,
-                      initialIndex: index,
-                    ),
-                  ),
-                );
-              }
-            },
-            onLongPress: () {
-              if (_selectMode || _reorderUIActive) return;
-              _pieMenuKey.currentState?.openMenuForItem(
-                file,
-                const Offset(0, 0), // 適当な位置
-              );
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8.0),
-                border: _selectedPaths.contains(file.path)
-                    ? Border.all(
-                        color: Theme.of(context).primaryColor,
-                        width: 3,
-                      )
-                    : null,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8.0),
-                child: _buildAspectRatioImage(file, index),
-              ),
-            ),
+        return GridView.builder(
+          controller: _autoController,
+          padding: const EdgeInsets.all(8.0),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 4.0,
+            mainAxisSpacing: 4.0,
+            childAspectRatio: 0.75, // やや縦長のデフォルト比率
           ),
+          itemCount: _files.length,
+          itemBuilder: (context, index) {
+            final file = _files[index];
+
+            return GestureDetector(
+              onTap: () {
+                if (_selectMode) {
+                  final p = _files[index].path;
+                  setState(() {
+                    if (_selectedPaths.contains(p)) {
+                      _selectedPaths.remove(p);
+                    } else {
+                      _selectedPaths.add(p);
+                    }
+                  });
+                } else {
+                  // 詳細画面に遷移
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => DetailScreen(
+                        imageFileList: _files,
+                        initialIndex: index,
+                      ),
+                    ),
+                  );
+                }
+              },
+              onLongPress: () {
+                if (_selectMode || _reorderUIActive) return;
+                _pieMenuKey.currentState?.openMenuForItem(
+                  file,
+                  const Offset(0, 0), // 適当な位置
+                );
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8.0),
+                  border: _selectedPaths.contains(file.path)
+                      ? Border.all(
+                          color: Theme.of(context).primaryColor,
+                          width: 3,
+                        )
+                      : null,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8.0),
+                  child: _buildAspectRatioImageForGrid(file, index),
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -462,6 +471,58 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             ),
           );
         }
+      },
+    );
+  }
+
+  // グリッド表示用：元の比率を保った画像表示
+  Widget _buildAspectRatioImageForGrid(File file, int index) {
+    return Consumer<SettingsProvider>(
+      builder: (context, settings, child) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final gridItemWidth =
+            (screenWidth - 16.0 - (settings.gridCrossAxisCount - 1) * 4.0) /
+            settings.gridCrossAxisCount;
+        final thumbnailSize =
+            (gridItemWidth * MediaQuery.of(context).devicePixelRatio).round();
+
+        return FutureBuilder<Size>(
+          future: _getImageSize(file),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.done &&
+                snapshot.hasData &&
+                snapshot.data != null) {
+              // 画像全体が見えるようにBoxFit.containを使用
+              return Image.file(
+                file,
+                fit: BoxFit.contain, // 画像全体が見えるように
+                cacheWidth: thumbnailSize,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: Colors.grey[300],
+                    child: const Icon(Icons.broken_image, size: 50),
+                  );
+                },
+              );
+            } else if (snapshot.hasError) {
+              return Container(
+                color: Colors.grey[300],
+                child: const Icon(Icons.error, size: 50),
+              );
+            } else {
+              return Container(
+                color: Colors.grey[200],
+                child: const Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              );
+            }
+          },
+        );
       },
     );
   }
