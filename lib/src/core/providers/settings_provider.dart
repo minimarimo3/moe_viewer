@@ -244,6 +244,11 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   Future<void> checkModelStatus(AiModelDefinition modelDef) async {
+    // ダウンロード中はハッシュチェックをスキップ（ファイルが不完全で誤検知になるため）
+    if (_isDownloading) {
+      log('ダウンロード中のため、ハッシュチェックをスキップします。');
+      return;
+    }
     _isCheckingHash = true;
     notifyListeners();
 

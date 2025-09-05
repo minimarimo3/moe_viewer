@@ -45,9 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _checkFullAccessPermission();
   }
 
-  // ★★★ どのパスが特別権限を必要とするか判断するヘルパー関数 ★★★
   bool _isRestrictedPath(String path) {
-    // 標準的な公共メディアディレクトリのキーワード
     const standardMediaDirs = [
       '/Pictures',
       '/DCIM',
@@ -56,19 +54,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       '/Music',
       '/Documents',
     ];
-
-    // パスに標準ディレクトリのキーワードが含まれていれば、それは公共エリアなのでfalse
     for (final dir in standardMediaDirs) {
-      if (path.contains(dir)) {
-        return false;
-      }
+      if (path.contains(dir)) return false;
     }
-
-    // それ以外の場合（例: /storage/emulated/0/MyIllustsなど）は個室とみなし、true
     return true;
   }
 
-  // ★★★ 全ファイルアクセス権限の現在の状態を確認する関数
   Future<void> _checkFullAccessPermission() async {
     final status = await Permission.manageExternalStorage.status;
     if (mounted) {
@@ -78,14 +69,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // ★★★ 権限を要求するための関数
   Future<void> _requestFullAccessPermission() async {
     final status = await Permission.manageExternalStorage.request();
     setState(() {
       _hasFullAccess = status.isGranted;
     });
 
-    // ユーザーに結果をフィードバック
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -137,6 +126,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             );
           });
         }
+
         final selectedModel = availableModels.firstWhere(
           (m) => m.id == settings.selectedModelId,
           orElse: () => availableModels.first,
@@ -155,10 +145,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 leading: const Icon(Icons.folder_outlined),
                 title: const Text('表示するフォルダを選択'),
                 onTap: () async {
-                  // フォルダピッカーを開く
                   String? result = await FilePicker.platform.getDirectoryPath();
                   if (result != null) {
-                    // 選択されたパスをProviderに追加
                     settings.addFolder(result);
                   }
                 },
@@ -166,7 +154,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               const Divider(),
 
-              // --- 現在選択中のフォルダ ---
               const Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
@@ -174,9 +161,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
-              // settings.selectedPaths の内容をリスト表示
-              // --- 実際のフォルダリスト ---
-              // TODO: これPaddingのchildrenに入れるべきな気がする
+
               for (FolderSetting folder in settings.folderSettings)
                 ListTile(
                   leading: _isRestrictedPath(folder.path) && !_hasFullAccess
@@ -187,12 +172,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: Colors.orange,
                           ),
                         )
-                      // _isRestrictedPathがfalseの場合
                       : Icon(Icons.folder_outlined),
                   title: Text(
-                    folder.path.split('/').last, // パスの最後の部分（フォルダ名）だけ表示
+                    folder.path.split('/').last,
                     style: TextStyle(
-                      // ★★★ 条件に応じて文字色を少し薄くする ★★★
                       color: (_isRestrictedPath(folder.path) && !_hasFullAccess)
                           ? Theme.of(context).disabledColor
                           : null,
@@ -205,32 +188,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Checkbox(
                         value: folder.isEnabled,
                         onChanged: (bool? value) {
-                          if (value != null) {
+                          if (value != null)
                             settings.toggleFolderEnabled(folder.path);
-                          }
                         },
                       ),
-                      // Pixiv等の特定フォルダは削除不可にする
                       if (folder.isDeletable)
                         IconButton(
                           icon: const Icon(Icons.delete_outline),
-                          onPressed: () {
-                            settings.removeFolder(
-                              folder.path,
-                            ); // ★★★ removeFolderを呼び出し
-                          },
+                          onPressed: () => settings.removeFolder(folder.path),
                         ),
                     ],
                   ),
                   onTap: () async {
                     if (_isRestrictedPath(folder.path) && !_hasFullAccess) {
-                      // 1. まず説明ダイアログを表示
                       final confirm = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
                           title: const Text('追加の権限が必要です'),
                           content: const SingleChildScrollView(
-                            // 長文でもスクロール可能
                             child: Text(
                               'このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。\n\n'
                               'この権限を許可すると、OSの標準アルバム以外の、あらゆる場所にある画像フォルダをアプリで表示できるようになります。\n\n',
@@ -248,26 +223,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ],
                         ),
                       );
-
-                      // 2. ユーザーが「許可する」を押した場合のみ、OSの権限要求を実行
-                      if (confirm == true) {
-                        await _requestFullAccessPermission();
-                      }
+                      if (confirm == true) await _requestFullAccessPermission();
                     }
                   },
                 ),
 
               const Divider(),
 
-              // --- 一覧表示グリッドの列数設定 ---
               ListTile(
                 leading: const Icon(Icons.grid_view_outlined),
                 title: Text('一覧の列数 (${settings.gridCrossAxisCount})'),
                 subtitle: Slider(
                   value: settings.gridCrossAxisCount.toDouble(),
-                  min: 1, // 最小1列
-                  max: 8, // 最大8列
-                  divisions: 7, // 刻み数 (8-1)
+                  min: 1,
+                  max: 8,
+                  divisions: 7,
                   label: settings.gridCrossAxisCount.toString(),
                   onChanged: (double value) {
                     settings.setGridCrossAxisCount(value.toInt());
@@ -294,22 +264,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     DropdownMenuItem(value: ThemeMode.dark, child: Text('ダーク')),
                   ],
                   onChanged: (ThemeMode? newMode) {
-                    if (newMode != null) {
-                      settings.setThemeMode(newMode);
-                    }
+                    if (newMode != null) settings.setThemeMode(newMode);
                   },
                 ),
               ),
 
               const Divider(),
 
-              // --- オフラインAIによる画像解析設定 ---
               ListTile(
                 leading: const Icon(Icons.psychology_outlined),
                 title: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // 左側にタイトルとサブタイトルを配置
                     const Flexible(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -322,14 +288,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ],
                       ),
                     ),
-                    // 右側に情報アイコンとスイッチを配置
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // ★★★ 有効化ボタン（スイッチ）の直前に情報アイコンを配置
                         IconButton(
                           icon: const Icon(Icons.info_outline),
-                          tooltip: '機能の詳細を表示', // 長押しでヒント表示
+                          tooltip: '機能の詳細を表示',
                           onPressed: () {
                             showInfoDialog(
                               context,
@@ -338,7 +302,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   'この機能を有効にすることでアプリはデバイス内で画像の内容を分析し、タグ付けを行うことができます。\n\n'
                                   'これによりキャラ名で画像を検索できたり、ジャンル別でのフィルタリングが可能になります。\n\n'
                                   'この処理はすべてオフラインで完結し、あなたの画像が外部に送信されることはありません。\n\n'
-                                  'また、この機能を有効にしても、画像が機械学習に用いられたりすることはありません。',
+                                  'また、この機能を有効にしても、画像が機械学習に用いられたりすることはありません.',
                             );
                           },
                         ),
@@ -347,7 +311,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
-              // ---  AIモデルの選択 ---
+
               ListTile(
                 leading: const Icon(Icons.memory),
                 title: const Text('AIモデルを選択'),
@@ -375,7 +339,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
 
-              // --- モデルのダウンロード状況 ---
               if (settings.selectedModelId != 'none')
                 Padding(
                   padding: const EdgeInsets.symmetric(
@@ -392,11 +355,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           leading: CircularProgressIndicator(),
                           title: Text('モデルファイルを確認中...'),
                         )
-                      : settings.isModelDownloaded
-                      // --- ダウンロード済みの場合 ---
+                      : settings.isDownloading
                       ? Column(
                           children: [
-                            // もしモデルが破損していたら、警告と修復ボタンを表示
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0,
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: LinearProgressIndicator(
+                                          value: settings.downloadProgress,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.close),
+                                        tooltip: 'ダウンロードを中止',
+                                        onPressed: () async {
+                                          final confirm = await showDialog<bool>(
+                                            context: context,
+                                            builder: (context) => AlertDialog(
+                                              title: const Text('ダウンロードの中止'),
+                                              content: const Text(
+                                                'ダウンロードを中止しますか？\n（解析用ファイルは削除されます）',
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.of(
+                                                    context,
+                                                  ).pop(false),
+                                                  child: const Text('いいえ'),
+                                                ),
+                                                TextButton(
+                                                  onPressed: () => Navigator.of(
+                                                    context,
+                                                  ).pop(true),
+                                                  child: const Text('はい'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm == true)
+                                            settings.cancelDownload();
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${(settings.downloadProgress * 100).toStringAsFixed(1)}%',
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        )
+                      : settings.isModelDownloaded
+                      ? Column(
+                          children: [
                             if (settings.isModelCorrupted)
                               Card(
                                 color: Colors.red.shade50,
@@ -427,55 +447,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       foregroundColor: Colors.white,
                                     ),
                                     onPressed: () async {
-                                      const int cancel = 0;
-                                      const int deleteAndDownload = 1;
-                                      const int redownload = 2;
-                                      // ★★★ 再ダウンロードの確認ダイアログを表示 ★★★
-                                      final confirm = await showDialog<int>(
+                                      await showModalBottomSheet<void>(
                                         context: context,
-                                        builder: (context) => AlertDialog(
-                                          title: const Text('モデルの再ダウンロード'),
-                                          content: const Text(
-                                            'モデルファイルを再ダウンロードして修復しますか？',
-                                          ),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () => Navigator.of(
-                                                context,
-                                              ).pop(cancel),
-                                              child: const Text('キャンセル'),
+                                        showDragHandle: true,
+                                        builder: (ctx) {
+                                          return SafeArea(
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                ListTile(
+                                                  leading: const Icon(
+                                                    Icons.cleaning_services,
+                                                    color: Colors.red,
+                                                  ),
+                                                  title: const Text(
+                                                    '一から再ダウンロード（推奨）',
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  subtitle: const Text(
+                                                    '壊れたファイルを削除して最初から取り直します',
+                                                  ),
+                                                  onTap: () async {
+                                                    Navigator.of(ctx).pop();
+                                                    await settings
+                                                        .downloadModel(
+                                                          selectedModel,
+                                                          isReset: true,
+                                                        );
+                                                  },
+                                                ),
+                                                const Divider(height: 0),
+                                                ListTile(
+                                                  leading: const Icon(
+                                                    Icons.download,
+                                                  ),
+                                                  title: const Text('途中から再開'),
+                                                  subtitle: const Text(
+                                                    '前回の続きから再ダウンロードを試みます',
+                                                  ),
+                                                  onTap: () async {
+                                                    Navigator.of(ctx).pop();
+                                                    await settings
+                                                        .downloadModel(
+                                                          selectedModel,
+                                                        );
+                                                  },
+                                                ),
+                                                const SizedBox(height: 8),
+                                              ],
                                             ),
-                                            TextButton(
-                                              onPressed: () => Navigator.of(
-                                                context,
-                                              ).pop(deleteAndDownload),
-                                              child: const Text('一から再ダウンロード'),
-                                            ),
-                                            TextButton(
-                                              onPressed: () => Navigator.of(
-                                                context,
-                                              ).pop(redownload),
-                                              child: const Text(
-                                                '前回の場所から再ダウンロード',
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                          );
+                                        },
                                       );
-                                      if (confirm == deleteAndDownload) {
-                                        settings.downloadModel(
-                                          selectedModel,
-                                          isReset: true,
-                                        );
-                                        settings.checkModelStatus(
-                                          selectedModelDef,
-                                        );
-                                      } else if (confirm == redownload) {
-                                        settings.downloadModel(selectedModel);
-                                        settings.checkModelStatus(
-                                          selectedModelDef,
-                                        );
-                                      }
                                     },
                                   ),
                                 ),
@@ -500,7 +526,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           ? settings.analyzedFileCount /
                                                 settings.totalFileCount
                                           : 0,
-                                      minHeight: 8, // バーの太さを少し太くする
+                                      minHeight: 8,
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                   ],
@@ -532,53 +558,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                               ),
 
-                            /*
-                          if (settings.isAnalyzing && settings.currentAnalyzingFile.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                16.0,
-                                8.0,
-                                16.0,
-                                0,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '解析対象: ${settings.currentAnalyzingFile}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (settings.lastFoundTags.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4.0),
-                                      child: Wrap(
-                                        spacing: 6.0,
-                                        runSpacing: 4.0,
-                                        children: settings.lastFoundTags
-                                            .map(
-                                              (tag) => Chip(
-                                                label: Text(tag),
-                                                visualDensity:
-                                                    VisualDensity.compact,
-                                                padding: const EdgeInsets.all(
-                                                  2.0,
-                                                ),
-                                                labelStyle: const TextStyle(
-                                                  fontSize: 11,
-                                                ),
-                                              ),
-                                            )
-                                            .toList(),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          */
                             if (settings.isAnalyzing &&
                                 settings.currentAnalyzingFile.isNotEmpty)
                               Padding(
@@ -589,15 +568,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   0,
                                 ),
                                 child: Row(
-                                  // ★★★ Rowで横並びにする ★★★
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // ★★★ 左側: AIが見ている画像 ★★★
                                     if (settings.currentAnalyzedImageBase64 !=
                                         null)
                                       Container(
-                                        width: 80, // 画像の幅
-                                        height: 80, // 画像の高さ
+                                        width: 80,
+                                        height: 80,
                                         margin: const EdgeInsets.only(
                                           right: 8.0,
                                         ),
@@ -626,14 +603,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                               return base64Decode(payload);
                                             })(),
                                             fit: BoxFit.cover,
-                                            gaplessPlayback:
-                                                true, // 画像が更新されてもちらつかないように
+                                            gaplessPlayback: true,
                                           ),
                                         ),
                                       ),
-                                    // ★★★ 右側: 解析結果のタグとファイル名 ★★★
                                     Expanded(
-                                      // 残りのスペースをタグとファイル名が使う
                                       child: Column(
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
@@ -682,7 +656,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                           ],
                         )
-                      // --- 未ダウンロードの場合 ---
                       : Column(
                           children: [
                             Text(
@@ -690,35 +663,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             const SizedBox(height: 8),
                             settings.isDownloading
-                                ? /*Column(
+                                ? Column(
                                     children: [
-                                      LinearProgressIndicator(
-                                        value: settings.downloadProgress,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${(settings.downloadProgress * 100).toStringAsFixed(1)}%',
-                                      ),
-                                    ],
-                                  )
-                                  */ Column(
-                                    children: [
-                                      // ★★★ 進捗バーとキャンセルボタンを横並びにする ★★★
                                       Row(
                                         children: [
-                                          // 進捗バーが残りのスペースを全て使うようにする
                                           Expanded(
                                             child: LinearProgressIndicator(
                                               value: settings.downloadProgress,
                                             ),
                                           ),
-
-                                          // キャンセルボタン
                                           IconButton(
                                             icon: const Icon(Icons.close),
                                             tooltip: 'ダウンロードを中止',
                                             onPressed: () async {
-                                              // ★★★ 確認ダイアログを表示 ★★★
                                               final confirm = await showDialog<bool>(
                                                 context: context,
                                                 builder: (context) => AlertDialog(
@@ -746,12 +703,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                                   ],
                                                 ),
                                               );
-                                              if (confirm == true) {
-                                                log(
-                                                  'ユーザーがダウンロード中止を確認しました。キャンセル処理を実行します。',
-                                                );
+                                              if (confirm == true)
                                                 settings.cancelDownload();
-                                              }
                                             },
                                           ),
                                         ],
@@ -766,7 +719,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     icon: const Icon(Icons.download),
                                     label: const Text('解析用ファイルをダウンロード'),
                                     onPressed: () async {
-                                      // 引数なしの関数の中で、引数を付けて呼び出す
                                       await settings.downloadModel(
                                         selectedModel,
                                       );
@@ -778,14 +730,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               const Divider(),
 
-              // --- 寄付・サポート ---
               ListTile(
                 leading: const Icon(Icons.favorite_border),
                 title: const Text('開発者をサポート'),
                 subtitle: const Text('（準備中）'),
-                onTap: () {
-                  // TODO: 寄付ページへのリンクなどを開く
-                },
+                onTap: () {},
               ),
             ],
           ),
