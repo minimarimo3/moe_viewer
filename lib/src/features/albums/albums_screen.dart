@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../core/models/album.dart';
 import '../../core/services/albums_service.dart';
+import '../../core/services/favorites_service.dart';
+import 'favorites_album_screen.dart';
 import '../gallery/widgets/gallery_grid_widget.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import '../../common_widgets/pie_menu_widget.dart';
@@ -22,6 +24,7 @@ class AlbumsScreen extends StatefulWidget {
 class _AlbumsScreenState extends State<AlbumsScreen> {
   List<Album> _albums = [];
   bool _loading = true;
+  static const _favoriteVirtualId = -1; // 仮想ID
 
   @override
   void initState() {
@@ -65,9 +68,17 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
 
   Future<void> _load() async {
     final albums = await AlbumsService.instance.listAlbums();
+    // favoritesを仮想アルバムとして先頭に追加
+    final favAlbum = Album(
+      id: _favoriteVirtualId,
+      name: 'お気に入り',
+      createdAt: DateTime.fromMillisecondsSinceEpoch(0),
+      sortMode: 'name_asc',
+    );
+    final list = [favAlbum, ...albums];
     if (!mounted) return;
     setState(() {
-      _albums = albums;
+      _albums = list;
       _loading = false;
     });
   }
@@ -127,11 +138,14 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
               itemCount: _albums.length,
               itemBuilder: (context, index) {
                 final a = _albums[index];
+                final isFav = a.id == _favoriteVirtualId;
                 return FutureBuilder<List<File>>(
-                  future: AlbumsService.instance.getAlbumFiles(
-                    a.id,
-                    sortMode: a.sortMode,
-                  ),
+                  future: isFav
+                      ? FavoritesService.instance.listFavoriteFiles()
+                      : AlbumsService.instance.getAlbumFiles(
+                          a.id,
+                          sortMode: a.sortMode,
+                        ),
                   builder: (context, snapshot) {
                     final cover =
                         (snapshot.data != null && snapshot.data!.isNotEmpty)
@@ -162,6 +176,17 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                         '作成日: ${a.createdAt.toLocal().toString().split(".").first}',
                       ),
                       onTap: () async {
+                        if (isFav) {
+                          // お気に入り画面へ
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const FavoritesAlbumScreen(),
+                            ),
+                          );
+                          await _load();
+                          return;
+                        }
                         await Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -170,80 +195,95 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                         );
                         await _load();
                       },
-                      trailing: PopupMenuButton<String>(
-                        onSelected: (value) async {
-                          if (value == 'rename') {
-                            final ctrl = TextEditingController(text: a.name);
-                            final newName = await showDialog<String>(
-                              context: context,
-                              builder: (_) => AlertDialog(
-                                title: const Text('名前を変更'),
-                                content: TextField(controller: ctrl),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text('キャンセル'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(
-                                      context,
-                                      ctrl.text.trim(),
+                      trailing: isFav
+                          ? null
+                          : PopupMenuButton<String>(
+                              onSelected: (value) async {
+                                if (value == 'rename') {
+                                  final ctrl = TextEditingController(
+                                    text: a.name,
+                                  );
+                                  final newName = await showDialog<String>(
+                                    context: context,
+                                    builder: (_) => AlertDialog(
+                                      title: const Text('名前を変更'),
+                                      content: TextField(controller: ctrl),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context),
+                                          child: const Text('キャンセル'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(
+                                            context,
+                                            ctrl.text.trim(),
+                                          ),
+                                          child: const Text('保存'),
+                                        ),
+                                      ],
                                     ),
-                                    child: const Text('保存'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (newName != null && newName.isNotEmpty) {
-                              await AlbumsService.instance.renameAlbum(
-                                a.id,
-                                newName,
-                              );
-                              await _load();
-                            }
-                          } else if (value == 'sort') {
-                            final selected = await _pickSortMode(
-                              context,
-                              initial: a.sortMode,
-                            );
-                            if (selected != null) {
-                              await AlbumsService.instance.setAlbumSortMode(
-                                a.id,
-                                selected,
-                              );
-                              await _load();
-                            }
-                          } else if (value == 'delete') {
-                            final ok = await showDialog<bool>(
-                              context: context,
-                              builder: (_) => AlertDialog(
-                                title: const Text('アルバムを削除'),
-                                content: Text('${a.name} を削除しますか？'),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text('キャンセル'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, true),
-                                    child: const Text('削除'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (ok == true) {
-                              await AlbumsService.instance.deleteAlbum(a.id);
-                              await _load();
-                            }
-                          }
-                        },
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(value: 'rename', child: Text('名前変更')),
-                          PopupMenuItem(value: 'sort', child: Text('並び替え')),
-                          PopupMenuItem(value: 'delete', child: Text('削除')),
-                        ],
-                      ),
+                                  );
+                                  if (newName != null && newName.isNotEmpty) {
+                                    await AlbumsService.instance.renameAlbum(
+                                      a.id,
+                                      newName,
+                                    );
+                                    await _load();
+                                  }
+                                } else if (value == 'sort') {
+                                  final selected = await _pickSortMode(
+                                    context,
+                                    initial: a.sortMode,
+                                  );
+                                  if (selected != null) {
+                                    await AlbumsService.instance
+                                        .setAlbumSortMode(a.id, selected);
+                                    await _load();
+                                  }
+                                } else if (value == 'delete') {
+                                  final ok = await showDialog<bool>(
+                                    context: context,
+                                    builder: (_) => AlertDialog(
+                                      title: const Text('アルバムを削除'),
+                                      content: Text('${a.name} を削除しますか？'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context),
+                                          child: const Text('キャンセル'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context, true),
+                                          child: const Text('削除'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (ok == true) {
+                                    await AlbumsService.instance.deleteAlbum(
+                                      a.id,
+                                    );
+                                    await _load();
+                                  }
+                                }
+                              },
+                              itemBuilder: (context) => const [
+                                PopupMenuItem(
+                                  value: 'rename',
+                                  child: Text('名前変更'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'sort',
+                                  child: Text('並び替え'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('削除'),
+                                ),
+                              ],
+                            ),
                     );
                   },
                 );

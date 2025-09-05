@@ -14,12 +14,15 @@ class PieMenuWidget extends StatefulWidget {
   final int? albumId; // アルバム詳細画面で使用（そのアルバムからの削除）
   // アルバムから削除後に親画面を更新するコールバック
   final Future<void> Function()? onRemove;
+  // お気に入り状態をトグルした際の通知（任意）
+  final Future<void> Function()? onFavoriteToggled;
 
   const PieMenuWidget({
     super.key,
     required this.child,
     this.albumId,
     this.onRemove,
+    this.onFavoriteToggled,
   });
 
   @override
@@ -157,6 +160,10 @@ class PieMenuWidgetState extends State<PieMenuWidget> {
           setState(() {
             _isCurrentFavorite = newState;
           });
+          // 親に通知（お気に入り一覧などでの即時反映用）
+          if (widget.onFavoriteToggled != null) {
+            await widget.onFavoriteToggled!();
+          }
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました')),
           );
