@@ -81,7 +81,7 @@ class SettingsProvider extends ChangeNotifier {
   String _selectedModelId = 'none';
   String get selectedModelId => _selectedModelId;
 
-  int _gridCrossAxisCount = 3;
+  int _gridCrossAxisCount = 2;
   int get gridCrossAxisCount => _gridCrossAxisCount;
 
   ThemeMode _themeMode = ThemeMode.system;
