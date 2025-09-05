@@ -142,23 +142,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           body: ListView(
             children: [
               // --- ディレクトリ設定（表示するフォルダを選択） ---
-              ListTile(
-                leading: const Icon(Icons.folder_outlined),
-                title: const Text('表示するフォルダを選択'),
-                onTap: () async {
-                  String? result = await FilePicker.platform.getDirectoryPath();
-                  if (result != null) {
-                    settings.addFolder(result);
-                  }
-                },
-              ),
-
-              const Divider(),
-
               const Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                  '現在選択中のフォルダ',
+                  '表示対象のフォルダ',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
@@ -186,6 +173,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (folder.isDeletable)
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (BuildContext context) {
+                                // ③ builderの中でAlertDialogを返す
+                                return AlertDialog(
+                                  title: const Text('フォルダの削除'),
+                                  content: Text(
+                                    '「${folder.path}」の表示を解除しますか？\n（フォルダ内の画像ファイルは削除されません）',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(),
+                                      child: const Text('キャンセル'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () {
+                                        Navigator.of(context).pop();
+                                        settings.removeFolder(folder.path);
+                                      },
+                                      child: const Text('解除する'),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
+                        ),
+
                       Checkbox(
                         value: folder.isEnabled,
                         onChanged: (bool? value) {
@@ -194,11 +214,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           }
                         },
                       ),
-                      if (folder.isDeletable)
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => settings.removeFolder(folder.path),
-                        ),
                     ],
                   ),
                   onTap: () async {
@@ -229,8 +244,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     }
                   },
                 ),
+              ListTile(
+                leading: const Icon(Icons.create_new_folder_outlined),
+                title: const Text('表示するフォルダを追加する'),
+                onTap: () async {
+                  String? result = await FilePicker.platform.getDirectoryPath();
+                  if (result != null) {
+                    settings.addFolder(result);
+                  }
+                },
+              ),
 
               const Divider(),
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  '表示設定',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
 
               ListTile(
                 leading: const Icon(Icons.grid_view_outlined),
@@ -246,8 +278,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
               ),
-
-              const Divider(),
 
               ListTile(
                 leading: const Icon(Icons.brightness_6_outlined),
@@ -736,6 +766,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Divider(),
 
               ListTile(
+                leading: const Icon(Icons.favorite_border),
+                title: const Text('開発者をサポート'),
+                subtitle: const Text('（準備中）'),
+                onTap: () {},
+              ),
+
+              const Divider(),
+
+              ListTile(
                 leading: const Icon(Icons.description_outlined),
                 title: const Text('使用ライブラリとライセンス'),
                 subtitle: const Text('このアプリで使用しているライブラリの一覧とライセンスを表示します'),
@@ -744,15 +783,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     MaterialPageRoute(builder: (ctx) => const LicensesScreen()),
                   );
                 },
-              ),
-
-              const Divider(),
-
-              ListTile(
-                leading: const Icon(Icons.favorite_border),
-                title: const Text('開発者をサポート'),
-                subtitle: const Text('（準備中）'),
-                onTap: () {},
               ),
             ],
           ),
