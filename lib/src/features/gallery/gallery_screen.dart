@@ -809,12 +809,12 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   }
 
   Future<void> _resetToOriginalOrder() async {
-    // 元の画像データを再読み込み
-    await _loadImages();
-
-    // シャッフル状態をクリア
+    // シャッフル状態を先にクリア
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     await settings.clearShuffleOrder();
+
+    // 元の画像データを再読み込み
+    await _loadImages();
 
     _resetScrollAndFilters();
     ScaffoldMessenger.of(
