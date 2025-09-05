@@ -471,26 +471,29 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                     }
                   },
                 ),
-                IconButton(
-                  icon: const Icon(Icons.shuffle),
-                  tooltip: '表示順をシャッフル',
-                  onPressed: () {
-                    _showShuffleConfirmationDialog();
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.settings_outlined),
-                  onPressed: () async {
-                    _exitSearchMode();
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SettingsScreen(),
-                      ),
-                    );
-                    _loadImages();
-                  },
-                ),
+                // 検索モード中はシャッフルと設定は検索と無関係なので非表示にする
+                if (!_isSearchMode) ...[
+                  IconButton(
+                    icon: const Icon(Icons.shuffle),
+                    tooltip: '表示順をシャッフル',
+                    onPressed: () {
+                      _showShuffleConfirmationDialog();
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined),
+                    onPressed: () async {
+                      _exitSearchMode();
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SettingsScreen(),
+                        ),
+                      );
+                      _loadImages();
+                    },
+                  ),
+                ],
               ],
             ),
           ),

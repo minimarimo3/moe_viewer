@@ -179,17 +179,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // TODO: これPaddingのchildrenに入れるべきな気がする
               for (FolderSetting folder in settings.folderSettings)
                 ListTile(
-                  // ★★★ 条件に応じてアイコンを表示 ★★★
-                  leading: (_isRestrictedPath(folder.path) && !_hasFullAccess)
-                      ? Tooltip(
-                          // アイコンにマウスカーソルを合わせるとメッセージが出る
-                          message: 'このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。',
-                          child: Icon(
-                            Icons.warning_amber_rounded,
-                            color: Colors.orange,
-                          ),
-                        )
-                      : Icon(Icons.folder_outlined), // 通常のフォルダアイコン
+                  leading: _isRestrictedPath(folder.path)
+                      ? _hasFullAccess
+                            // _isRestrictedPathがtrueで、_hasFullAccessもtrueの場合
+                            ? Tooltip(
+                                message:
+                                    'スマートフォンの仕様により、このフォルダにある画像の表示は非常に遅くなります。\n画像をPictureやDCIM以下のフォルダに移動することを**強く**お勧めします。',
+                                child: Icon(
+                                  Icons.warning_amber_rounded, // 例として別のアイコン
+                                  color: Colors.orange, // 例として別の色
+                                ),
+                              )
+                            // _isRestrictedPathがtrueで、_hasFullAccessがfalseの場合
+                            : Tooltip(
+                                message:
+                                    'スマートフォンの使用により、このフォルダにある画像の表示は非常に遅くなります。\n画像をPictureやDCIM以下のフォルダに移動することを**強く**お勧めします。また、このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。',
+                                child: Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Colors.orange,
+                                ),
+                              )
+                      // _isRestrictedPathがfalseの場合
+                      : Icon(Icons.folder_outlined),
                   title: Text(
                     folder.path.split('/').last, // パスの最後の部分（フォルダ名）だけ表示
                     style: TextStyle(
@@ -224,16 +235,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                   onTap: () async {
-                    if (_isRestrictedPath(folder.path) && !_hasFullAccess) {
-                      /*
-                      showInfoDialog(
-                        context,
-                        title: '追加の権限が必要です',
-                        content:
-                            'このフォルダ内の画像をスキャンするには、「すべてのフォルダをスキャンする」権限を許可する必要があります。\n\n'
-                            'この設定をONにすると、OSのアルバムに登録されていない、あらゆる場所の画像フォルダを読み込めるようになります。',
+                    if (_isRestrictedPath(folder.path) && _hasFullAccess) {
+                      await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('注意'),
+                          content: const SingleChildScrollView(
+                            // 長文でもスクロール可能
+                            child: Text(
+                              'スマートフォンの仕様により、このフォルダにある画像の表示は非常に遅くなります。\n\n'
+                              '大量の画像を保存している場合、保存先をPictureやDCIMのフォルダ下に移動させることを**強く**お勧めします。\n\n',
+                            ),
+                          ),
+                        ),
                       );
-                      */
+                      return;
+                    }
+                    if (_isRestrictedPath(folder.path) && !_hasFullAccess) {
                       // 1. まず説明ダイアログを表示
                       final confirm = await showDialog<bool>(
                         context: context,
@@ -242,8 +260,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           content: const SingleChildScrollView(
                             // 長文でもスクロール可能
                             child: Text(
-                              'このフォルダ内の画像をスキャンするには、「全ファイルへのアクセス」権限が必要です。\n\n'
-                              'この権限を許可すると、OSの標準アルバム以外の、あらゆる場所にある画像フォルダをアプリで表示できるようになります。',
+                              'スマートフォンの仕様により、このフォルダにある画像の表示は非常に遅くなります。\n\n'
+                              '画像をPictureやDCIM以下のフォルダに移動することを**強く**お勧めします。\n\n'
+                              'また、このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。\n\n'
+                              'この権限を許可すると、OSの標準アルバム以外の、あらゆる場所にある画像フォルダをアプリで表示できるようになります。\n\n',
                             ),
                           ),
                           actions: [
