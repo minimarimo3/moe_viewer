@@ -18,17 +18,19 @@ class DatabaseHelper {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 6,
+      version: 1, // バージョンを1にリセット
       onCreate: _createDB,
       onConfigure: (db) async {
         // 外部キー制約を有効化
         await db.execute('PRAGMA foreign_keys = ON');
       },
-      onUpgrade: _upgradeDB,
+      // onUpgradeは不要なため削除
     );
   }
 
+  // 最新のスキーマをバージョン1として定義
   Future _createDB(Database db, int version) async {
+    // 画像タグテーブル
     await db.execute('''
       CREATE TABLE image_tags (
         path TEXT PRIMARY KEY,
@@ -39,7 +41,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // v2: アルバム関連
+    // アルバムテーブル
     await db.execute('''
       CREATE TABLE albums (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,18 +51,19 @@ class DatabaseHelper {
       )
     ''');
 
+    // アルバム所属画像テーブル
     await db.execute('''
       CREATE TABLE album_items (
         album_id INTEGER NOT NULL,
         path TEXT NOT NULL,
         added_at INTEGER NOT NULL,
-  position INTEGER NOT NULL,
+        position INTEGER NOT NULL,
         PRIMARY KEY (album_id, path),
         FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE
       )
     ''');
 
-    // v4: 手動タグ用テーブル
+    // 手動タグ用テーブル
     await db.execute('''
       CREATE TABLE manual_tags (
         path TEXT NOT NULL,
@@ -70,7 +73,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // v5: 削除されたAIタグ用テーブル
+    // 削除されたAIタグ用テーブル
     await db.execute('''
       CREATE TABLE deleted_ai_tags (
         path TEXT NOT NULL,
@@ -79,72 +82,6 @@ class DatabaseHelper {
         PRIMARY KEY (path, tag)
       )
     ''');
-  }
-
-  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS albums (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL,
-          created_at INTEGER NOT NULL,
-          sort_mode TEXT NOT NULL DEFAULT 'manual'
-        )
-      ''');
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS album_items (
-          album_id INTEGER NOT NULL,
-          path TEXT NOT NULL,
-          added_at INTEGER NOT NULL,
-          position INTEGER NOT NULL,
-          PRIMARY KEY (album_id, path),
-          FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE
-        )
-      ''');
-    }
-    if (oldVersion < 3) {
-      // v3: album_items に position 列を追加し、既存行を初期化
-      try {
-        await db.execute('ALTER TABLE album_items ADD COLUMN position INTEGER');
-      } catch (_) {
-        // 既に存在する場合は無視
-      }
-      // 既存のNULL positionに、追加日時の逆順に近い順序を与える（新しいものが先頭になるよう負値を設定）
-      await db.execute(
-        'UPDATE album_items SET position = -added_at WHERE position IS NULL',
-      );
-    }
-    if (oldVersion < 4) {
-      // v4: 手動タグ用テーブルを追加
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS manual_tags (
-          path TEXT NOT NULL,
-          tag TEXT NOT NULL,
-          added_at INTEGER NOT NULL,
-          PRIMARY KEY (path, tag)
-        )
-      ''');
-    }
-    if (oldVersion < 5) {
-      // v5: 削除されたAIタグ用テーブルを追加
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS deleted_ai_tags (
-          path TEXT NOT NULL,
-          tag TEXT NOT NULL,
-          deleted_at INTEGER NOT NULL,
-          PRIMARY KEY (path, tag)
-        )
-      ''');
-    }
-    if (oldVersion < 6) {
-      // v6: character_tags と feature_tags カラムを追加
-      await db.execute('''
-        ALTER TABLE image_tags ADD COLUMN character_tags TEXT
-      ''');
-      await db.execute('''
-        ALTER TABLE image_tags ADD COLUMN feature_tags TEXT
-      ''');
-    }
   }
 
   // 解析結果を保存または更新する
@@ -450,7 +387,7 @@ class DatabaseHelper {
     // AI解析タグを取得（削除されたタグは除外）
     final aiRows = await db.query(
       'image_tags',
-      columns: ['tags'],
+      columns: ['path', 'tags'], // pathも取得
       where: 'tags NOT LIKE ? AND tags NOT LIKE ?',
       whereArgs: ['%AI解析エラー%', '%タグが見つかりませんでした%'],
     );
@@ -501,6 +438,7 @@ class DatabaseHelper {
     final id = await db.insert('albums', {
       'name': name,
       'created_at': DateTime.now().millisecondsSinceEpoch,
+      'sort_mode': 'manual', // デフォルト値を明示
     });
     return id;
   }
