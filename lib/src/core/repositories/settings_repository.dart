@@ -58,7 +58,7 @@ class SettingsRepository {
 
   Future<int> loadGridCrossAxisCount() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_gridCrossAxisCountKey) ?? 3;
+    return prefs.getInt(_gridCrossAxisCountKey) ?? 2;
   }
 
   Future<void> saveThemeMode(ThemeMode mode) async {
