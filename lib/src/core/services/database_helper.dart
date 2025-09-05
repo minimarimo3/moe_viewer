@@ -18,7 +18,7 @@ class DatabaseHelper {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _createDB,
       onConfigure: (db) async {
         // 外部キー制約を有効化
@@ -57,6 +57,16 @@ class DatabaseHelper {
         FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE
       )
     ''');
+
+    // v4: 手動タグ用テーブル
+    await db.execute('''
+      CREATE TABLE manual_tags (
+        path TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        added_at INTEGER NOT NULL,
+        PRIMARY KEY (path, tag)
+      )
+    ''');
   }
 
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -91,6 +101,17 @@ class DatabaseHelper {
       await db.execute(
         'UPDATE album_items SET position = -added_at WHERE position IS NULL',
       );
+    }
+    if (oldVersion < 4) {
+      // v4: 手動タグ用テーブルを追加
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS manual_tags (
+          path TEXT NOT NULL,
+          tag TEXT NOT NULL,
+          added_at INTEGER NOT NULL,
+          PRIMARY KEY (path, tag)
+        )
+      ''');
     }
   }
 
@@ -133,6 +154,46 @@ class DatabaseHelper {
     return null; // データがなければnullを返す
   }
 
+  // 手動タグを取得
+  Future<List<String>> getManualTagsForPath(String path) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'manual_tags',
+      columns: ['tag'],
+      where: 'path = ?',
+      whereArgs: [path],
+      orderBy: 'added_at ASC',
+    );
+    return result.map((row) => row['tag'] as String).toList();
+  }
+
+  // AI解析タグと手動タグを統合して取得
+  Future<Map<String, List<String>>> getAllTagsForPath(String path) async {
+    final aiTags = await getTagsForPath(path) ?? [];
+    final manualTags = await getManualTagsForPath(path);
+    return {'ai': aiTags, 'manual': manualTags};
+  }
+
+  // 手動タグを追加
+  Future<void> addManualTag(String path, String tag) async {
+    final db = await instance.database;
+    await db.insert('manual_tags', {
+      'path': path,
+      'tag': tag,
+      'added_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  // 手動タグを削除
+  Future<void> removeManualTag(String path, String tag) async {
+    final db = await instance.database;
+    await db.delete(
+      'manual_tags',
+      where: 'path = ? AND tag = ?',
+      whereArgs: [path, tag],
+    );
+  }
+
   // 既存タグを取得し、関数で編集して保存するユーティリティ（予約タグの拡張に備える）
   Future<void> editTags(
     String path,
@@ -154,30 +215,55 @@ class DatabaseHelper {
   }
 
   // 複数タグAND検索（大文字小文字を無視）し、該当パスのみ返す
+  // AI解析タグと手動タグの両方を検索対象とする
   Future<List<String>> searchByTags(List<String> tokens) async {
     // エイリアスを正規タグに正規化（未登録は小文字化）
     final normalized = ReservedTags.normalizeTokens(tokens);
     if (normalized.isEmpty) return <String>[];
 
     final db = await instance.database;
-    final likeConds = List.filled(normalized.length, 'LOWER(tags) LIKE ?');
-    final whereCore = likeConds.join(' AND ');
-    // 既知のエラー行は除外
-    final exclusion = ' AND tags NOT LIKE ? AND tags NOT LIKE ?';
-    final where = whereCore + exclusion;
-    final args = [
+
+    // AI解析タグでの検索
+    final aiLikeConds = List.filled(normalized.length, 'LOWER(tags) LIKE ?');
+    final aiWhereCore = aiLikeConds.join(' AND ');
+    final aiExclusion = ' AND tags NOT LIKE ? AND tags NOT LIKE ?';
+    final aiWhere = aiWhereCore + aiExclusion;
+    final aiArgs = [
       ...normalized.map((t) => '%$t%'),
       '%AI解析エラー%',
       '%タグが見つかりませんでした%',
     ];
 
-    final rows = await db.query(
+    final aiRows = await db.query(
       'image_tags',
       columns: ['path'],
-      where: where,
-      whereArgs: args,
+      where: aiWhere,
+      whereArgs: aiArgs,
     );
-    return rows.map((r) => r['path'] as String).toList();
+    final aiPaths = aiRows.map((r) => r['path'] as String).toSet();
+
+    // 手動タグでの検索
+    final manualPaths = <String>{};
+    for (final token in normalized) {
+      final manualRows = await db.query(
+        'manual_tags',
+        columns: ['path'],
+        where: 'LOWER(tag) LIKE ?',
+        whereArgs: ['%$token%'],
+      );
+      final tokenPaths = manualRows.map((r) => r['path'] as String).toSet();
+
+      if (manualPaths.isEmpty) {
+        manualPaths.addAll(tokenPaths);
+      } else {
+        // AND検索なので積集合を取る
+        manualPaths.retainWhere(tokenPaths.contains);
+      }
+    }
+
+    // AI解析タグと手動タグの結果を統合
+    final allPaths = {...aiPaths, ...manualPaths};
+    return allPaths.toList();
   }
 
   // 解析済みのファイルの総数を取得する（ただし、エラーのものを除く）
@@ -192,16 +278,19 @@ class DatabaseHelper {
   }
 
   // 全タグ一覧（重複除去）を取得する。大文字小文字は区別しない。
+  // AI解析タグと手動タグの両方を含む
   Future<List<String>> getAllTags() async {
     final db = await instance.database;
-    final rows = await db.query(
+
+    // AI解析タグを取得
+    final aiRows = await db.query(
       'image_tags',
       columns: ['tags'],
       where: 'tags NOT LIKE ? AND tags NOT LIKE ?',
       whereArgs: ['%AI解析エラー%', '%タグが見つかりませんでした%'],
     );
     final set = <String>{};
-    for (final r in rows) {
+    for (final r in aiRows) {
       final t = (r['tags'] as String?) ?? '';
       for (final raw in t.split(',')) {
         final s = raw.trim();
@@ -209,6 +298,16 @@ class DatabaseHelper {
         set.add(s);
       }
     }
+
+    // 手動タグを取得
+    final manualRows = await db.query('manual_tags', columns: ['tag']);
+    for (final r in manualRows) {
+      final tag = (r['tag'] as String?) ?? '';
+      if (tag.isNotEmpty) {
+        set.add(tag);
+      }
+    }
+
     final list = set.toList();
     list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     return list;

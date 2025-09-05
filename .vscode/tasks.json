@@ -4,7 +4,7 @@
 		{
 			"label": "Flutter run (debug)",
 			"type": "shell",
-			"command": "flutter --no-version-check run -d macos -v",
+			"command": "flutter --no-version-check analyze",
 			"args": [],
 			"isBackground": false,
 			"group": "build"

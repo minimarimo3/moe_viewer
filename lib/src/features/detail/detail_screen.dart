@@ -58,8 +58,13 @@ class _DetailScreenState extends State<DetailScreen>
   }
 
   Future<void> _showImageDetails(File imageFile) async {
-    // データベースからタグを取得
-    final tags = await DatabaseHelper.instance.getTagsForPath(imageFile.path);
+    // データベースからAIタグと手動タグを取得
+    final allTags = await DatabaseHelper.instance.getAllTagsForPath(
+      imageFile.path,
+    );
+    final aiTags = allTags['ai'] ?? [];
+    final manualTags = allTags['manual'] ?? [];
+
     // Pixiv IDを取得
     final pixivId = _extractPixivId(imageFile.path);
 
@@ -67,16 +72,13 @@ class _DetailScreenState extends State<DetailScreen>
 
     // タグの数に応じて初期サイズを動的に計算
     double initialSize = 0.4;
-    if (tags != null && tags.isNotEmpty) {
-      // タグの数に基づいて初期サイズを調整（最大0.7まで）
-      final tagCount = tags.length;
-      if (tagCount > 20) {
-        initialSize = 0.7;
-      } else if (tagCount > 10) {
-        initialSize = 0.55;
-      } else if (tagCount > 5) {
-        initialSize = 0.45;
-      }
+    final totalTagCount = aiTags.length + manualTags.length;
+    if (totalTagCount > 20) {
+      initialSize = 0.7;
+    } else if (totalTagCount > 10) {
+      initialSize = 0.55;
+    } else if (totalTagCount > 5) {
+      initialSize = 0.45;
     }
 
     // DraggableScrollableSheetのコントローラーを作成
@@ -319,15 +321,15 @@ class _DetailScreenState extends State<DetailScreen>
                             ),
                           ),
 
-                          // 3. AIによる解析タグセクション（最後に表示）
-                          if (tags != null && tags.isNotEmpty) ...[
+                          // 3. 手動タグセクション
+                          if (manualTags.isNotEmpty) ...[
                             const SizedBox(height: 24.0),
                             Row(
                               children: [
-                                const Icon(Icons.psychology_outlined, size: 20),
+                                const Icon(Icons.edit, size: 20),
                                 const SizedBox(width: 8.0),
                                 Text(
-                                  'AIによる解析タグ (${tags.length}個)',
+                                  '手動タグ (${manualTags.length}個)',
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
@@ -339,7 +341,45 @@ class _DetailScreenState extends State<DetailScreen>
                             Wrap(
                               spacing: 8.0,
                               runSpacing: 8.0,
-                              children: tags
+                              children: manualTags
+                                  .map(
+                                    (tag) => Chip(
+                                      label: Text(tag),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8.0,
+                                        vertical: 4.0,
+                                      ),
+                                      labelStyle: const TextStyle(fontSize: 13),
+                                      backgroundColor: Theme.of(
+                                        context,
+                                      ).colorScheme.secondaryContainer,
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ],
+
+                          // 4. AIによる解析タグセクション
+                          if (aiTags.isNotEmpty) ...[
+                            const SizedBox(height: 24.0),
+                            Row(
+                              children: [
+                                const Icon(Icons.psychology_outlined, size: 20),
+                                const SizedBox(width: 8.0),
+                                Text(
+                                  'AIによる解析タグ (${aiTags.length}個)',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12.0),
+                            Wrap(
+                              spacing: 8.0,
+                              runSpacing: 8.0,
+                              children: aiTags
                                   .map(
                                     (tag) => Chip(
                                       label: Text(tag),
@@ -530,8 +570,6 @@ class _DetailScreenState extends State<DetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    final currentFile = widget.imageFileList[_currentIndex];
-
     return PieMenuWidget(
       key: _pieMenuKey,
       child: Scaffold(

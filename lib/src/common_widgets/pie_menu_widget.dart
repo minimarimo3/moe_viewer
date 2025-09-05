@@ -8,6 +8,7 @@ import '../core/utils/pixiv_utils.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../core/services/albums_service.dart';
 import 'dialogs.dart';
+import '../features/detail/widgets/tag_edit_dialog.dart';
 
 class PieMenuWidget extends StatefulWidget {
   final Widget child;
@@ -188,6 +189,19 @@ class PieMenuWidgetState extends State<PieMenuWidget> {
           ).showSnackBar(const SnackBar(content: Text('アルバムに追加しました')));
         },
         child: const Icon(Icons.playlist_add),
+      ),
+      PieAction(
+        tooltip: const Text('タグを編集'),
+        onSelect: () async {
+          final path = _currentTargetPath;
+          if (path == null) return;
+
+          await showDialog(
+            context: context,
+            builder: (context) => TagEditDialog(imagePath: path),
+          );
+        },
+        child: const Icon(Icons.local_offer),
       ),
       if (widget.albumId != null)
         PieAction(
