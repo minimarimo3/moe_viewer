@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'database_helper.dart';
 import '../models/album.dart';
 import '../models/album_item.dart';
+import 'thumbnail_service.dart';
 
 class AlbumsService {
   AlbumsService._();
@@ -28,6 +30,12 @@ class AlbumsService {
 
   Future<void> addPaths(int albumId, List<String> paths) async {
     await DatabaseHelper.instance.addImagesToAlbum(albumId, paths);
+    // 追加された画像のベースサムネイルをバックグラウンドで事前生成
+    // 重くなりすぎないように短いディレイを入れつつ順次実行
+    for (final p in paths) {
+      // Fire-and-forget
+      unawaited(precacheBaseThumbnail(p));
+    }
   }
 
   Future<void> addFiles(int albumId, List<File> files) async {

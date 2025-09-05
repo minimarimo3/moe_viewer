@@ -15,6 +15,7 @@ import '../models/ai_model_definition.dart';
 import '../models/folder_setting.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/image_repository.dart';
+import '../services/thumbnail_service.dart';
 
 class SettingsProvider extends ChangeNotifier {
   final SettingsRepository _settingsRepository = SettingsRepository();
@@ -149,6 +150,12 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> setGridCrossAxisCount(int count) async {
     _gridCrossAxisCount = count;
     await _settingsRepository.saveGridCrossAxisCount(count);
+    // 列数変更時はグリッド用サムネイルを一掃（ベースは保持）
+    try {
+      await clearGridThumbnailsCache();
+    } catch (e) {
+      log('Failed to clear grid thumbnails on column change: $e');
+    }
     notifyListeners();
   }
 
