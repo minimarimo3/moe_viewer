@@ -179,26 +179,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // TODO: これPaddingのchildrenに入れるべきな気がする
               for (FolderSetting folder in settings.folderSettings)
                 ListTile(
-                  leading: _isRestrictedPath(folder.path)
-                      ? _hasFullAccess
-                            // _isRestrictedPathがtrueで、_hasFullAccessもtrueの場合
-                            ? Tooltip(
-                                message:
-                                    'スマートフォンの仕様により、このフォルダにある画像の表示は非常に遅くなります。\n画像をPictureやDCIM以下のフォルダに移動することを**強く**お勧めします。',
-                                child: Icon(
-                                  Icons.warning_amber_rounded, // 例として別のアイコン
-                                  color: Colors.orange, // 例として別の色
-                                ),
-                              )
-                            // _isRestrictedPathがtrueで、_hasFullAccessがfalseの場合
-                            : Tooltip(
-                                message:
-                                    'スマートフォンの使用により、このフォルダにある画像の表示は非常に遅くなります。\n画像をPictureやDCIM以下のフォルダに移動することを**強く**お勧めします。また、このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。',
-                                child: Icon(
-                                  Icons.warning_amber_rounded,
-                                  color: Colors.orange,
-                                ),
-                              )
+                  leading: _isRestrictedPath(folder.path) && !_hasFullAccess
+                      ? Tooltip(
+                          message: 'このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。',
+                          child: Icon(
+                            Icons.warning_amber_rounded,
+                            color: Colors.orange,
+                          ),
+                        )
                       // _isRestrictedPathがfalseの場合
                       : Icon(Icons.folder_outlined),
                   title: Text(
@@ -235,22 +223,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                   onTap: () async {
-                    if (_isRestrictedPath(folder.path) && _hasFullAccess) {
-                      await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('注意'),
-                          content: const SingleChildScrollView(
-                            // 長文でもスクロール可能
-                            child: Text(
-                              'スマートフォンの仕様により、このフォルダにある画像の表示は非常に遅くなります。\n\n'
-                              '大量の画像を保存している場合、保存先をPictureやDCIMのフォルダ下に移動させることを**強く**お勧めします。\n\n',
-                            ),
-                          ),
-                        ),
-                      );
-                      return;
-                    }
                     if (_isRestrictedPath(folder.path) && !_hasFullAccess) {
                       // 1. まず説明ダイアログを表示
                       final confirm = await showDialog<bool>(
@@ -260,9 +232,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           content: const SingleChildScrollView(
                             // 長文でもスクロール可能
                             child: Text(
-                              'スマートフォンの仕様により、このフォルダにある画像の表示は非常に遅くなります。\n\n'
-                              '画像をPictureやDCIM以下のフォルダに移動することを**強く**お勧めします。\n\n'
-                              'また、このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。\n\n'
+                              'このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。\n\n'
                               'この権限を許可すると、OSの標準アルバム以外の、あらゆる場所にある画像フォルダをアプリで表示できるようになります。\n\n',
                             ),
                           ),
