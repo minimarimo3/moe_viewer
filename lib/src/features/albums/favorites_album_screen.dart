@@ -6,6 +6,8 @@ import 'package:scroll_to_index/scroll_to_index.dart';
 
 import '../../common_widgets/file_thumbnail.dart';
 import '../../common_widgets/pie_menu_widget.dart';
+import '../../common_widgets/loading_view.dart';
+import '../../core/services/thumbnail_service.dart';
 import '../../core/providers/settings_provider.dart';
 import '../../core/services/favorites_service.dart';
 import '../detail/detail_screen.dart';
@@ -34,6 +36,23 @@ class _FavoritesAlbumScreenState extends State<FavoritesAlbumScreen> {
 
   Future<void> _load() async {
     final files = await FavoritesService.instance.listFavoriteFiles();
+    // 画面表示前に見える範囲のサムネイルを生成
+    try {
+      final crossAxisCount = Provider.of<SettingsProvider>(
+        context,
+        listen: false,
+      ).gridCrossAxisCount;
+      final screenWidth = MediaQuery.of(context).size.width;
+      final dpr = MediaQuery.of(context).devicePixelRatio;
+      final tileSize = (screenWidth / crossAxisCount * dpr).round();
+      final viewportHeight = MediaQuery.of(context).size.height;
+      final rows = (viewportHeight / (screenWidth / crossAxisCount)).ceil() + 1;
+      final visibleCount = (crossAxisCount * rows).clamp(0, files.length);
+      final targets = files.take(visibleCount).toList();
+      await Future.wait(
+        targets.map((f) => generateAndCacheGridThumbnail(f.path, tileSize)),
+      );
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       _files = files;
@@ -55,7 +74,7 @@ class _FavoritesAlbumScreenState extends State<FavoritesAlbumScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('お気に入り')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingView(message: 'アルバムを開いています…')
           : _files.isEmpty
           ? const Center(child: Text('お気に入りがありません'))
           : PieMenuWidget(

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:developer';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
@@ -160,5 +161,27 @@ Future<void> clearGridThumbnailsCache() async {
     }
   } catch (e) {
     log('clearGridThumbnailsCache failed: $e');
+  }
+}
+
+/// 指定の幅/高さでグリッド用サムネイルを生成し、
+/// FileThumbnail と同じ命名規則のキャッシュファイル（thumb_..._w*_h*.jpg）に保存する。
+/// これにより表示時はディスクから即読み込みが可能になり、グレー表示を避けられる。
+Future<void> generateAndCacheGridThumbnail(
+  String filePath,
+  int width, {
+  int? height,
+}) async {
+  try {
+    final data = await computeThumbnail(filePath, width, height: height);
+    if (data.isEmpty) return;
+    final tempDir = await getTemporaryDirectory();
+    final h = height?.toString() ?? 'auto';
+    final cacheFileName = 'thumb_${filePath.hashCode}_w${width}_h$h.jpg';
+    final cacheFile = File(p.join(tempDir.path, cacheFileName));
+    if (await cacheFile.exists()) return; // 既にあるならスキップ
+    await cacheFile.writeAsBytes(data, flush: false);
+  } catch (e) {
+    log('generateAndCacheGridThumbnail failed for $filePath: $e');
   }
 }

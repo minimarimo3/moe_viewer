@@ -20,6 +20,7 @@ import 'widgets/gallery_list_widget.dart';
 import 'utils/gallery_shuffle_utils.dart';
 import '../albums/albums_screen.dart';
 import '../../common_widgets/dialogs.dart';
+import '../../common_widgets/loading_view.dart';
 
 enum LoadingStatus {
   loading, // 読み込み中
@@ -55,7 +56,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       ItemPositionsListener.create();
   Timer? _debounce;
 
-  final bool _isAutoScrolling = false;
+  bool _restoringPosition = false;
   final GlobalKey<PieMenuWidgetState> _pieMenuKey =
       GlobalKey<PieMenuWidgetState>();
 
@@ -209,18 +210,29 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       final index = settings.lastScrollIndex;
       if (index > 0 && index < _displayItems.length) {
         try {
+          setState(() => _restoringPosition = true);
           if (settings.gridCrossAxisCount > 1 &&
               _autoScrollController.hasClients) {
-            _autoScrollController.scrollToIndex(
-              index,
-              preferPosition: AutoScrollPosition.begin,
-            );
+            _autoScrollController
+                .scrollToIndex(index, preferPosition: AutoScrollPosition.begin)
+                .whenComplete(() {
+                  if (mounted) {
+                    setState(() => _restoringPosition = false);
+                  }
+                });
           } else if (settings.gridCrossAxisCount == 1 &&
               _itemScrollController.isAttached) {
             _itemScrollController.jumpTo(index: index);
+            // 少し待ってから解除（ジャンプは同期なので視覚的な余裕を持たせる）
+            Future.delayed(const Duration(milliseconds: 400), () {
+              if (mounted) setState(() => _restoringPosition = false);
+            });
+          } else {
+            setState(() => _restoringPosition = false);
           }
         } catch (e) {
           log('スクロール位置復元エラー: $e');
+          if (mounted) setState(() => _restoringPosition = false);
         }
       }
     });
@@ -260,7 +272,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
       switch (_status) {
         case LoadingStatus.loading:
-          return const CircularProgressIndicator();
+          return const LoadingView(message: '画像を読み込んでいます');
         case LoadingStatus.empty:
           return const Text(
             '画像が見つかりません。\n設定からフォルダを追加してください。',
@@ -336,21 +348,15 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-              // ローディング表示
-              if (_isAutoScrolling)
+              // 前回位置への移動オーバーレイ
+              if (_restoringPosition)
                 Container(
-                  color: Colors.black.withAlpha((255 * 0.5).round()),
+                  color: Colors.black.withOpacity(0.5),
                   child: const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(color: Colors.white),
-                        SizedBox(height: 16),
-                        Text(
-                          '前回見ていた（大体の）位置へ移動中...',
-                          style: TextStyle(color: Colors.white, fontSize: 16),
-                        ),
-                      ],
+                    child: LoadingView(
+                      message: '前回の位置まで移動しています・・・',
+                      spinnerColor: Colors.white,
+                      textStyle: TextStyle(color: Colors.white, fontSize: 16),
                     ),
                   ),
                 ),

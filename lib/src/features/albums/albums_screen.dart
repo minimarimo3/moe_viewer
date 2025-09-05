@@ -12,8 +12,10 @@ import '../../core/providers/settings_provider.dart';
 import 'package:provider/provider.dart';
 import '../detail/detail_screen.dart';
 import '../../common_widgets/file_thumbnail.dart';
+import '../../common_widgets/loading_view.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import 'widgets/album_card.dart';
+import '../../core/services/thumbnail_service.dart';
 
 class AlbumsScreen extends StatefulWidget {
   const AlbumsScreen({super.key});
@@ -98,7 +100,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingView(message: 'アルバムを開いています・・・')
           : _albums.isEmpty
           ? const Center(child: Text('アルバムがありません。右上から作成できます。'))
           : LayoutBuilder(
@@ -268,6 +270,24 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       widget.album.id,
       sortMode: _sortMode,
     );
+    // 画面表示前に見える範囲のサムネイルを生成
+    try {
+      final crossAxisCount = Provider.of<SettingsProvider>(
+        context,
+        listen: false,
+      ).gridCrossAxisCount;
+      final screenWidth = MediaQuery.of(context).size.width;
+      final dpr = MediaQuery.of(context).devicePixelRatio;
+      final tileSize = (screenWidth / crossAxisCount * dpr).round();
+      final viewportHeight = MediaQuery.of(context).size.height;
+      final rows =
+          (viewportHeight / (screenWidth / crossAxisCount)).ceil() + 1; // 少し多め
+      final visibleCount = (crossAxisCount * rows).clamp(0, files.length);
+      final targets = files.take(visibleCount).toList();
+      await Future.wait(
+        targets.map((f) => generateAndCacheGridThumbnail(f.path, tileSize)),
+      );
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       _files = files;
@@ -325,7 +345,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingView(message: 'アルバムを開いています・・・')
           : _files.isEmpty
           ? const Center(child: Text('このアルバムにはまだ画像がありません'))
           : (_reorderUIActive
