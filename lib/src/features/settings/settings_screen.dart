@@ -11,6 +11,7 @@ import '../../common_widgets/dialogs.dart';
 import '../../core/services/ai_service.dart';
 import '../../core/models/ai_model_definition.dart';
 import '../../core/models/folder_setting.dart';
+import 'licenses_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -731,6 +732,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ],
                         ),
                 ),
+
+              const Divider(),
+
+              ListTile(
+                leading: const Icon(Icons.description_outlined),
+                title: const Text('使用ライブラリとライセンス'),
+                subtitle: const Text('このアプリで使用しているライブラリの一覧とライセンスを表示します'),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (ctx) => const LicensesScreen()),
+                  );
+                },
+              ),
 
               const Divider(),
 
