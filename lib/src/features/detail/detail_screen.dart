@@ -108,7 +108,7 @@ class _DetailScreenState extends State<DetailScreen>
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 10,
                     offset: const Offset(0, -2),
                   ),
@@ -272,7 +272,7 @@ class _DetailScreenState extends State<DetailScreen>
                                               color: Theme.of(context)
                                                   .colorScheme
                                                   .onPrimaryContainer
-                                                  .withOpacity(0.8),
+                                                  .withValues(alpha: 0.8),
                                             ),
                                           ),
                                         ],
@@ -304,9 +304,10 @@ class _DetailScreenState extends State<DetailScreen>
                             width: double.infinity,
                             padding: const EdgeInsets.all(12.0),
                             decoration: BoxDecoration(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.surfaceVariant.withOpacity(0.5),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceVariant
+                                  .withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(8.0),
                             ),
                             child: SelectableText(

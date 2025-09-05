@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import '../gallery/gallery_screen.dart';
 import '../permission/permission_screen.dart';
 import '../../core/providers/settings_provider.dart';
@@ -51,7 +53,7 @@ class _DispatchScreenState extends State<DispatchScreen> {
       }
     } catch (e) {
       // エラーが発生した場合でもアプリを停止させない
-      print('Dispatch error: $e');
+      log('Dispatch error: $e');
       if (!mounted) return;
 
       // エラーが発生した場合は権限画面へ

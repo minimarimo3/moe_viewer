@@ -302,7 +302,9 @@ class TfliteNhwcModelRunner implements ModelRunner {
       final shape = _outputShapes[i];
       if (shape.isEmpty) continue;
       int classes = 1;
-      for (int d = 1; d < shape.length; d++) classes *= shape[d];
+      for (int d = 1; d < shape.length; d++) {
+        classes *= shape[d];
+      }
       if (classes == expectedClasses) {
         pickByShapeIndex = i;
         break;
@@ -331,7 +333,9 @@ class TfliteNhwcModelRunner implements ModelRunner {
     _chosenOutputType = _outputTypes[chosen];
     _batchSize = chosenShape[0];
     _numClasses = 1;
-    for (int d = 1; d < chosenShape.length; d++) _numClasses *= chosenShape[d];
+    for (int d = 1; d < chosenShape.length; d++) {
+      _numClasses *= chosenShape[d];
+    }
 
     log(
       'Chosen output index: $_chosenOutputIndex, shape=$chosenShape, '
@@ -410,7 +414,9 @@ class TfliteNhwcModelRunner implements ModelRunner {
       }
       final batch = shape[0];
       int elements = 1;
-      for (int d = 1; d < shape.length; d++) elements *= shape[d];
+      for (int d = 1; d < shape.length; d++) {
+        elements *= shape[d];
+      }
 
       final type = _outputTypes[i];
       Object buf;

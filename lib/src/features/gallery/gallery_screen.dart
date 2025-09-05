@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart'; // ★★★ SystemChromeのためにインポート ★★★
 import 'package:provider/provider.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
@@ -339,7 +338,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
+                      color: Colors.black.withValues(alpha: 0.6),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
@@ -351,7 +350,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
               // 前回位置への移動オーバーレイ
               if (_restoringPosition)
                 Container(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
                   child: const Center(
                     child: LoadingView(
                       message: '前回の位置まで移動しています・・・',

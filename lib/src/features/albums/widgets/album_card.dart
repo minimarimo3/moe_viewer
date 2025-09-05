@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import '../../../common_widgets/file_thumbnail.dart';
@@ -226,7 +225,7 @@ class _PlaceholderCover extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [base.withOpacity(0.9), base.withOpacity(0.6)],
+          colors: [base.withValues(alpha: 0.9), base.withValues(alpha: 0.6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -235,7 +234,7 @@ class _PlaceholderCover extends StatelessWidget {
         child: Icon(
           isFavorite ? Icons.favorite_rounded : Icons.photo_library_rounded,
           size: 48,
-          color: onBase.withOpacity(0.9),
+          color: onBase.withValues(alpha: 0.9),
         ),
       ),
     );
