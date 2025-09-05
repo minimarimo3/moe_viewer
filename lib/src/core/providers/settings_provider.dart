@@ -480,9 +480,16 @@ class SettingsProvider extends ChangeNotifier {
 
       final result = await aiService.analyzeImage(file);
       final tags = result['tags'] as List<String>? ?? ['AI解析エラー'];
+      final characterTags = result['characterTags'] as List<String>?;
+      final featureTags = result['featureTags'] as List<String>?;
       final imageBase64 = result['image'] as String?;
 
-      await dbHelper.insertOrUpdateTag(file.path, tags);
+      await dbHelper.insertOrUpdateTagWithCategories(
+        file.path,
+        tags,
+        characterTags,
+        featureTags,
+      );
 
       _analyzedFileCount++;
       _lastFoundTags = tags;

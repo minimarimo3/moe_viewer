@@ -18,7 +18,7 @@ class DatabaseHelper {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: _createDB,
       onConfigure: (db) async {
         // 外部キー制約を有効化
@@ -33,6 +33,8 @@ class DatabaseHelper {
       CREATE TABLE image_tags (
         path TEXT PRIMARY KEY,
         tags TEXT NOT NULL,
+        character_tags TEXT,
+        feature_tags TEXT,
         analyzed_at INTEGER NOT NULL
       )
     ''');
@@ -134,6 +136,15 @@ class DatabaseHelper {
         )
       ''');
     }
+    if (oldVersion < 6) {
+      // v6: character_tags と feature_tags カラムを追加
+      await db.execute('''
+        ALTER TABLE image_tags ADD COLUMN character_tags TEXT
+      ''');
+      await db.execute('''
+        ALTER TABLE image_tags ADD COLUMN feature_tags TEXT
+      ''');
+    }
   }
 
   // 解析結果を保存または更新する
@@ -142,6 +153,23 @@ class DatabaseHelper {
     await db.insert('image_tags', {
       'path': path,
       'tags': tags.join(','), // タグのリストをカンマ区切りの文字列に変換
+      'analyzed_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // 解析結果をカテゴリ別タグも含めて保存または更新する
+  Future<void> insertOrUpdateTagWithCategories(
+    String path,
+    List<String> tags,
+    List<String>? characterTags,
+    List<String>? featureTags,
+  ) async {
+    final db = await instance.database;
+    await db.insert('image_tags', {
+      'path': path,
+      'tags': tags.join(','),
+      'character_tags': characterTags?.join(','),
+      'feature_tags': featureTags?.join(','),
       'analyzed_at': DateTime.now().millisecondsSinceEpoch,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
@@ -173,6 +201,35 @@ class DatabaseHelper {
       return tagsString.split(','); // カンマ区切りの文字列をリストに戻す
     }
     return null; // データがなければnullを返す
+  }
+
+  // 分類済みタグを取得
+  Future<Map<String, List<String>?>> getCategorizedTagsForPath(
+    String path,
+  ) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'image_tags',
+      columns: ['tags', 'character_tags', 'feature_tags'],
+      where: 'path = ?',
+      whereArgs: [path],
+    );
+
+    if (result.isNotEmpty) {
+      final row = result.first;
+      return {
+        'all': (row['tags'] as String?)?.split(','),
+        'character': (row['character_tags'] as String?)
+            ?.split(',')
+            .where((tag) => tag.isNotEmpty)
+            .toList(),
+        'feature': (row['feature_tags'] as String?)
+            ?.split(',')
+            .where((tag) => tag.isNotEmpty)
+            .toList(),
+      };
+    }
+    return {'all': null, 'character': null, 'feature': null};
   }
 
   // 手動タグを取得
@@ -212,6 +269,52 @@ class DatabaseHelper {
 
     final manualTags = await getManualTagsForPath(path);
     return {'ai': aiTags, 'manual': manualTags};
+  }
+
+  // AI解析タグと手動タグを統合して取得（分類済みタグも含む）（削除されたAIタグは除外）
+  Future<Map<String, dynamic>> getAllTagsWithCategoriesForPath(
+    String path,
+  ) async {
+    // 分類済みタグを取得
+    final categorizedTags = await getCategorizedTagsForPath(path);
+
+    // 削除されたAIタグのリストを取得
+    final db = await instance.database;
+    final deletedRows = await db.query(
+      'deleted_ai_tags',
+      columns: ['tag'],
+      where: 'path = ?',
+      whereArgs: [path],
+    );
+    final deletedAiTags = deletedRows
+        .map((row) => row['tag'] as String)
+        .toSet();
+
+    // 削除されたタグを除外
+    final allTags =
+        categorizedTags['all']
+            ?.where((tag) => !deletedAiTags.contains(tag))
+            .toList() ??
+        [];
+    final characterTags =
+        categorizedTags['character']
+            ?.where((tag) => !deletedAiTags.contains(tag))
+            .toList() ??
+        [];
+    final featureTags =
+        categorizedTags['feature']
+            ?.where((tag) => !deletedAiTags.contains(tag))
+            .toList() ??
+        [];
+
+    final manualTags = await getManualTagsForPath(path);
+
+    return {
+      'ai': allTags,
+      'aiCharacter': characterTags,
+      'aiFeature': featureTags,
+      'manual': manualTags,
+    };
   }
 
   // AIタグを削除（削除済みとしてマーク）

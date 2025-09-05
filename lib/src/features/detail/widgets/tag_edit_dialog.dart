@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/database_helper.dart';
+import '../../../core/utils/tag_category_utils.dart';
 
 class TagEditDialog extends StatefulWidget {
   final String imagePath;
@@ -12,6 +13,8 @@ class TagEditDialog extends StatefulWidget {
 
 class _TagEditDialogState extends State<TagEditDialog> {
   List<String> _aiTags = [];
+  List<String> _aiCharacterTags = [];
+  List<String> _aiFeatureTags = [];
   List<String> _manualTags = [];
   List<String> _allAvailableTags = [];
   List<String> _filteredSuggestions = [];
@@ -37,12 +40,17 @@ class _TagEditDialogState extends State<TagEditDialog> {
 
   Future<void> _loadTags() async {
     try {
+      await TagCategoryUtils.ensureLoaded();
       final db = DatabaseHelper.instance;
-      final allTags = await db.getAllTagsForPath(widget.imagePath);
+      final allTags = await db.getAllTagsWithCategoriesForPath(
+        widget.imagePath,
+      );
       final availableTags = await db.getAllTags();
 
       setState(() {
         _aiTags = allTags['ai'] ?? [];
+        _aiCharacterTags = allTags['aiCharacter'] ?? [];
+        _aiFeatureTags = allTags['aiFeature'] ?? [];
         _manualTags = allTags['manual'] ?? [];
         _allAvailableTags = availableTags;
         _isLoading = false;
@@ -273,7 +281,7 @@ class _TagEditDialogState extends State<TagEditDialog> {
                             const Icon(Icons.edit, size: 20),
                             const SizedBox(width: 8),
                             Text(
-                              '手動タグ (${_manualTags.length}個)',
+                              'ユーザータグ (${_manualTags.length}個)',
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
@@ -292,30 +300,8 @@ class _TagEditDialogState extends State<TagEditDialog> {
                         const SizedBox(height: 24),
                       ],
 
-                      // AIタグセクション
-                      if (_aiTags.isNotEmpty) ...[
-                        Row(
-                          children: [
-                            const Icon(Icons.psychology_outlined, size: 20),
-                            const SizedBox(width: 8),
-                            Text(
-                              'AIによる解析タグ (${_aiTags.length}個)',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8.0,
-                          runSpacing: 8.0,
-                          children: _aiTags
-                              .map((tag) => _buildTagChip(tag, isManual: false))
-                              .toList(),
-                        ),
-                      ],
+                      // AIキャラタグセクション
+                      if (_aiTags.isNotEmpty) ...[..._buildAiTagSections()],
 
                       // タグがない場合のメッセージ
                       if (_manualTags.isEmpty && _aiTags.isEmpty)
@@ -335,5 +321,75 @@ class _TagEditDialogState extends State<TagEditDialog> {
         ),
       ),
     );
+  }
+
+  List<Widget> _buildAiTagSections() {
+    // 分類済みタグが利用可能な場合はそれを使用、そうでない場合は従来の方法で分類
+    List<String> aiCharacterTags;
+    List<String> aiFeatureTags;
+
+    if (_aiCharacterTags.isNotEmpty || _aiFeatureTags.isNotEmpty) {
+      // データベースから分類済みタグを使用
+      aiCharacterTags = _aiCharacterTags;
+      aiFeatureTags = _aiFeatureTags;
+    } else {
+      // 従来の方法で分類（後方互換性のため）
+      final categorizedTags = TagCategoryUtils.categorizeAiTags(_aiTags);
+      aiCharacterTags = categorizedTags['character'] ?? [];
+      aiFeatureTags = categorizedTags['feature'] ?? [];
+    }
+
+    final List<Widget> sections = [];
+
+    // AIキャラタグセクション
+    if (aiCharacterTags.isNotEmpty) {
+      sections.addAll([
+        Row(
+          children: [
+            const Icon(Icons.person_outlined, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'AIキャラタグ (${aiCharacterTags.length}個)',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8.0,
+          runSpacing: 8.0,
+          children: aiCharacterTags
+              .map((tag) => _buildTagChip(tag, isManual: false))
+              .toList(),
+        ),
+        const SizedBox(height: 24),
+      ]);
+    }
+
+    // AI特徴タグセクション
+    if (aiFeatureTags.isNotEmpty) {
+      sections.addAll([
+        Row(
+          children: [
+            const Icon(Icons.psychology_outlined, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'AI特徴タグ (${aiFeatureTags.length}個)',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8.0,
+          runSpacing: 8.0,
+          children: aiFeatureTags
+              .map((tag) => _buildTagChip(tag, isManual: false))
+              .toList(),
+        ),
+      ]);
+    }
+
+    return sections;
   }
 }

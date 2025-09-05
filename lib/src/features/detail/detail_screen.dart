@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/utils/pixiv_utils.dart';
+import '../../core/utils/tag_category_utils.dart';
 import '../../common_widgets/pie_menu_widget.dart';
 
 class DetailScreen extends StatefulWidget {
@@ -59,11 +60,14 @@ class _DetailScreenState extends State<DetailScreen>
 
   Future<void> _showImageDetails(File imageFile) async {
     // データベースからAIタグと手動タグを取得
-    final allTags = await DatabaseHelper.instance.getAllTagsForPath(
-      imageFile.path,
-    );
+    final allTags = await DatabaseHelper.instance
+        .getAllTagsWithCategoriesForPath(imageFile.path);
     final aiTags = allTags['ai'] ?? [];
     final manualTags = allTags['manual'] ?? [];
+
+    // 分類済みタグを取得（利用可能な場合）
+    final aiCharacterTagsFromDB = allTags['aiCharacter'] as List<String>?;
+    final aiFeatureTagsFromDB = allTags['aiFeature'] as List<String>?;
 
     // Pixiv IDを取得
     final pixivId = _extractPixivId(imageFile.path);
@@ -72,7 +76,24 @@ class _DetailScreenState extends State<DetailScreen>
 
     // タグの数に応じて初期サイズを動的に計算
     double initialSize = 0.4;
-    final totalTagCount = aiTags.length + manualTags.length;
+    // 分類済みタグが利用可能な場合はそれを使用、そうでない場合は従来の方法で分類
+    List<String> aiCharacterTags;
+    List<String> aiFeatureTags;
+
+    if (aiCharacterTagsFromDB != null && aiFeatureTagsFromDB != null) {
+      // データベースから分類済みタグを使用
+      aiCharacterTags = aiCharacterTagsFromDB;
+      aiFeatureTags = aiFeatureTagsFromDB;
+    } else {
+      // 従来の方法で分類（後方互換性のため）
+      await TagCategoryUtils.ensureLoaded();
+      final categorizedAiTags = TagCategoryUtils.categorizeAiTags(aiTags);
+      aiCharacterTags = categorizedAiTags['character'] ?? [];
+      aiFeatureTags = categorizedAiTags['feature'] ?? [];
+    }
+
+    final totalTagCount =
+        manualTags.length + aiCharacterTags.length + aiFeatureTags.length;
     if (totalTagCount > 20) {
       initialSize = 0.7;
     } else if (totalTagCount > 10) {
@@ -329,7 +350,7 @@ class _DetailScreenState extends State<DetailScreen>
                                 const Icon(Icons.edit, size: 20),
                                 const SizedBox(width: 8.0),
                                 Text(
-                                  '手動タグ (${manualTags.length}個)',
+                                  'ユーザータグ (${manualTags.length}個)',
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
@@ -359,15 +380,15 @@ class _DetailScreenState extends State<DetailScreen>
                             ),
                           ],
 
-                          // 4. AIによる解析タグセクション
-                          if (aiTags.isNotEmpty) ...[
+                          // 4. AIキャラタグセクション
+                          if (aiCharacterTags.isNotEmpty) ...[
                             const SizedBox(height: 24.0),
                             Row(
                               children: [
-                                const Icon(Icons.psychology_outlined, size: 20),
+                                const Icon(Icons.person_outlined, size: 20),
                                 const SizedBox(width: 8.0),
                                 Text(
-                                  'AIによる解析タグ (${aiTags.length}個)',
+                                  'AIキャラタグ (${aiCharacterTags.length}個)',
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
@@ -379,7 +400,7 @@ class _DetailScreenState extends State<DetailScreen>
                             Wrap(
                               spacing: 8.0,
                               runSpacing: 8.0,
-                              children: aiTags
+                              children: aiCharacterTags
                                   .map(
                                     (tag) => Chip(
                                       label: Text(tag),
@@ -391,7 +412,46 @@ class _DetailScreenState extends State<DetailScreen>
                                       backgroundColor: Theme.of(context)
                                           .colorScheme
                                           .primaryContainer
-                                          .withValues(alpha: 0.7),
+                                          .withValues(alpha: 0.8),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ],
+
+                          // 5. AI特徴タグセクション
+                          if (aiFeatureTags.isNotEmpty) ...[
+                            const SizedBox(height: 24.0),
+                            Row(
+                              children: [
+                                const Icon(Icons.psychology_outlined, size: 20),
+                                const SizedBox(width: 8.0),
+                                Text(
+                                  'AI特徴タグ (${aiFeatureTags.length}個)',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12.0),
+                            Wrap(
+                              spacing: 8.0,
+                              runSpacing: 8.0,
+                              children: aiFeatureTags
+                                  .map(
+                                    (tag) => Chip(
+                                      label: Text(tag),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8.0,
+                                        vertical: 4.0,
+                                      ),
+                                      labelStyle: const TextStyle(fontSize: 13),
+                                      backgroundColor: Theme.of(context)
+                                          .colorScheme
+                                          .primaryContainer
+                                          .withValues(alpha: 0.5),
                                     ),
                                   )
                                   .toList(),
