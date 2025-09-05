@@ -9,11 +9,16 @@ import '../models/image_list.dart';
 
 class ImageRepository {
   static const int _batchSize = 200; // バッチサイズを増やして効率化
+  static const int _initialLoadCount = 100; // 初期表示用の画像数
 
   // キャッシュ用
   List<AssetPathEntity>? _cachedAlbums;
   Map<String, AssetPathEntity>? _cachedAlbumMap;
   List<String>? _cachedDirectScanPaths;
+
+  // 遅延読み込み用の状態管理
+  bool _isLoadingMore = false;
+  int _currentLoadedCount = 0;
   Future<ImageList> getAllImages(List<FolderSetting> folderSettings) async {
     final enabledFolders = folderSettings.where((f) => f.isEnabled).toList();
     final selectedPaths = enabledFolders.map((f) => f.path).toList();
@@ -43,10 +48,15 @@ class ImageRepository {
         final album = _cachedAlbumMap![folderName]!;
         final totalCount = await album.assetCountAsync;
 
+        // 初期読み込みは最初の一部のみ
+        final initialLoadCount = totalCount < _initialLoadCount
+            ? totalCount
+            : _initialLoadCount;
+
         // バッチで読み込んで処理を分散
-        for (int start = 0; start < totalCount; start += _batchSize) {
-          final end = (start + _batchSize > totalCount)
-              ? totalCount
+        for (int start = 0; start < initialLoadCount; start += _batchSize) {
+          final end = (start + _batchSize > initialLoadCount)
+              ? initialLoadCount
               : start + _batchSize;
           final assets = await album.getAssetListRange(start: start, end: end);
 
@@ -60,12 +70,14 @@ class ImageRepository {
           }
 
           // UIの反応性を保つために小さな遅延を追加
-          if (start + _batchSize < totalCount) {
+          if (start + _batchSize < initialLoadCount) {
             await Future.delayed(
               const Duration(microseconds: 100),
             ); // マイクロ秒に変更して高速化
           }
         }
+
+        _currentLoadedCount = initialLoadCount;
       } else if (hasFullAccess && !_cachedDirectScanPaths!.contains(path)) {
         _cachedDirectScanPaths!.add(path);
       }
@@ -84,6 +96,55 @@ class ImageRepository {
     }
 
     return ImageList(allDisplayItems, allDetailFiles);
+  }
+
+  // 追加で画像を読み込む機能
+  Future<ImageList> loadMoreImages(List<FolderSetting> folderSettings) async {
+    if (_isLoadingMore) return ImageList([], []);
+
+    _isLoadingMore = true;
+
+    try {
+      final enabledFolders = folderSettings.where((f) => f.isEnabled).toList();
+      final selectedPaths = enabledFolders.map((f) => f.path).toList();
+
+      List<dynamic> additionalDisplayItems = [];
+      List<File> additionalDetailFiles = [];
+
+      for (final path in selectedPaths) {
+        final folderName = path.split('/').last.toLowerCase();
+
+        if (_cachedAlbumMap!.containsKey(folderName)) {
+          final album = _cachedAlbumMap![folderName]!;
+          final totalCount = await album.assetCountAsync;
+
+          if (_currentLoadedCount < totalCount) {
+            final nextBatchEnd = (_currentLoadedCount + _batchSize > totalCount)
+                ? totalCount
+                : _currentLoadedCount + _batchSize;
+
+            final assets = await album.getAssetListRange(
+              start: _currentLoadedCount,
+              end: nextBatchEnd,
+            );
+
+            for (final asset in assets) {
+              final file = await asset.file;
+              if (file != null) {
+                additionalDisplayItems.add(asset);
+                additionalDetailFiles.add(file);
+              }
+            }
+
+            _currentLoadedCount = nextBatchEnd;
+          }
+        }
+      }
+
+      return ImageList(additionalDisplayItems, additionalDetailFiles);
+    } finally {
+      _isLoadingMore = false;
+    }
   }
 
   Future<void> _scanDirectoryOptimized(
@@ -147,5 +208,7 @@ class ImageRepository {
     _cachedAlbums = null;
     _cachedAlbumMap = null;
     _cachedDirectScanPaths = null;
+    _currentLoadedCount = 0;
+    _isLoadingMore = false;
   }
 }

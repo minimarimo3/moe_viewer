@@ -195,6 +195,32 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     }
   }
 
+  // 追加画像読み込み機能
+  Future<void> _loadMoreImages() async {
+    if (_status != LoadingStatus.completed) return;
+
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+
+    try {
+      final additionalImageList = await _imageRepository.loadMoreImages(
+        settings.folderSettings,
+      );
+
+      if (!mounted) return;
+
+      if (additionalImageList.displayItems.isNotEmpty) {
+        setState(() {
+          _displayItems.addAll(additionalImageList.displayItems);
+          _imageFilesForDetail.addAll(additionalImageList.detailFiles);
+        });
+
+        log('追加で ${additionalImageList.displayItems.length} 個のアイテムを読み込みました。');
+      }
+    } catch (e) {
+      log('追加画像読み込みエラー: $e');
+    }
+  }
+
   void _loadTagsAsync() async {
     try {
       _allTags = await _db.getAllTags();
@@ -321,6 +347,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                         onEnterDetail: () => _exitSearchMode(resetInput: false),
                         onLongPress: _handleLongPress,
                         imageSizeFutureCache: _imageSizeFutureCache,
+                        onScrollToEnd: _loadMoreImages, // 遅延読み込み追加
                       )
                     : GalleryGridWidget(
                         displayItems: effectiveDisplayItems,
@@ -329,6 +356,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                         autoScrollController: _autoScrollController,
                         onLongPress: _handleLongPress,
                         onEnterDetail: () => _exitSearchMode(resetInput: false),
+                        onScrollToEnd: _loadMoreImages, // 遅延読み込み追加
                       ),
               ),
 

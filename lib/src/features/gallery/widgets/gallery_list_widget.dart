@@ -13,6 +13,7 @@ class GalleryListWidget extends StatelessWidget {
   final Function(dynamic item, Offset globalPosition) onLongPress;
   final Map<String, Future<Size>> imageSizeFutureCache;
   final VoidCallback? onEnterDetail;
+  final VoidCallback? onScrollToEnd; // 遅延読み込み用コールバック
 
   const GalleryListWidget({
     super.key,
@@ -23,6 +24,7 @@ class GalleryListWidget extends StatelessWidget {
     required this.onLongPress,
     required this.imageSizeFutureCache,
     this.onEnterDetail,
+    this.onScrollToEnd,
   });
 
   Future<Size> getImageSize(File imageFile) {
@@ -115,45 +117,56 @@ class GalleryListWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ScrollablePositionedList.builder(
-      itemScrollController: itemScrollController,
-      itemPositionsListener: itemPositionsListener,
-      itemCount: displayItems.length,
-      addAutomaticKeepAlives: true, // ビューポート外のアイテムをキャッシュして滑らかなスクロール
-      addRepaintBoundaries: false, // RepaintBoundaryを手動で制御
-      itemBuilder: (context, index) {
-        final item = displayItems[index];
-        return RepaintBoundary(
-          // アイテム全体をRepaintBoundaryで囲む
-          child: GestureDetector(
-            onTap: () {
-              onEnterDetail?.call();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => DetailScreen(
-                    imageFileList: imageFilesForDetail,
-                    initialIndex: index,
+    return NotificationListener<ScrollNotification>(
+      onNotification: (ScrollNotification scrollInfo) {
+        // スクロールが最下部に近づいた時に追加読み込みを実行
+        if (onScrollToEnd != null &&
+            scrollInfo.metrics.extentAfter < 500 && // 500px手前で読み込み開始
+            scrollInfo is ScrollUpdateNotification) {
+          onScrollToEnd!();
+        }
+        return false;
+      },
+      child: ScrollablePositionedList.builder(
+        itemScrollController: itemScrollController,
+        itemPositionsListener: itemPositionsListener,
+        itemCount: displayItems.length,
+        addAutomaticKeepAlives: true, // ビューポート外のアイテムをキャッシュして滑らかなスクロール
+        addRepaintBoundaries: false, // RepaintBoundaryを手動で制御
+        itemBuilder: (context, index) {
+          final item = displayItems[index];
+          return RepaintBoundary(
+            // アイテム全体をRepaintBoundaryで囲む
+            child: GestureDetector(
+              onTap: () {
+                onEnterDetail?.call();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => DetailScreen(
+                      imageFileList: imageFilesForDetail,
+                      initialIndex: index,
+                    ),
                   ),
+                );
+              },
+              onLongPressStart: (details) {
+                onLongPress(item, details.globalPosition);
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 4.0,
+                  horizontal: 8.0,
                 ),
-              );
-            },
-            onLongPressStart: (details) {
-              onLongPress(item, details.globalPosition);
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                vertical: 4.0,
-                horizontal: 8.0,
-              ),
-              child: Hero(
-                tag: 'imageHero_$index',
-                child: buildFullAspectRatioImage(item, index),
+                child: Hero(
+                  tag: 'imageHero_$index',
+                  child: buildFullAspectRatioImage(item, index),
+                ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

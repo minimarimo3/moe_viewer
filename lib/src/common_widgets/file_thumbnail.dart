@@ -8,6 +8,10 @@ import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+// メモリキャッシュで高速化
+final Map<String, Uint8List> _memoryCache = {};
+const int _maxMemoryCacheSize = 50; // メモリキャッシュの最大アイテム数
+
 class FileThumbnail extends StatefulWidget {
   final File imageFile;
   final int width;
@@ -26,6 +30,7 @@ class FileThumbnail extends StatefulWidget {
 
 class _FileThumbnailState extends State<FileThumbnail> {
   Uint8List? _thumbnailData;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -39,51 +44,108 @@ class _FileThumbnailState extends State<FileThumbnail> {
     // もし要求されるサイズが変わったら、サムネイルを再生成する
     if (oldWidget.width != widget.width ||
         oldWidget.imageFile.path != widget.imageFile.path) {
+      _isLoading = true;
       _loadOrGenerateThumbnail();
     }
+  }
+
+  String _getCacheKey() {
+    final h = widget.height?.toString() ?? 'auto';
+    return '${widget.imageFile.path}_w${widget.width}_h$h';
   }
 
   Future<void> _loadOrGenerateThumbnail() async {
     // 画面に表示される前にsetStateが呼ばれるのを防ぐ
     if (!mounted) return;
-    // 以前はここで一旦nullにしていたが、ちらつきの原因になるのでやめる
+
+    final cacheKey = _getCacheKey();
+
+    // メモリキャッシュをチェック
+    if (_memoryCache.containsKey(cacheKey)) {
+      if (mounted) {
+        setState(() {
+          _thumbnailData = _memoryCache[cacheKey];
+          _isLoading = false;
+        });
+      }
+      return;
+    }
 
     final tempDir = await getTemporaryDirectory();
-    // アルバム（写真まとめ）とアルバム（OSの方）でやってる
-    // final cacheFileName = 'thumb_${widget.imageFile.path.hashCode}.jpg';
     final h = widget.height?.toString() ?? 'auto';
     final cacheFileName =
         'thumb_${widget.imageFile.path.hashCode}_w${widget.width}_h$h.jpg';
     final cacheFile = File(p.join(tempDir.path, cacheFileName));
 
-    if (await cacheFile.exists()) {
-      final data = await cacheFile.readAsBytes();
-      if (mounted) setState(() => _thumbnailData = data);
-    } else {
-      final data = await thumbnailPool.withResource(() {
-        return computeThumbnail(
-          widget.imageFile.path,
-          widget.width,
-          height: widget.height,
-        );
-      });
-      if (mounted) setState(() => _thumbnailData = data);
-      await cacheFile.writeAsBytes(data);
+    try {
+      Uint8List data;
+      if (await cacheFile.exists()) {
+        data = await cacheFile.readAsBytes();
+      } else {
+        data = await thumbnailPool.withResource(() {
+          return computeThumbnail(
+            widget.imageFile.path,
+            widget.width,
+            height: widget.height,
+          );
+        });
+
+        // 非同期でディスクキャッシュに保存
+        cacheFile.writeAsBytes(data).catchError((e) {
+          // エラーは無視（次回も生成される）
+          return cacheFile; // File型を返す
+        });
+      }
+
+      // メモリキャッシュに追加（LRU的に管理）
+      if (_memoryCache.length >= _maxMemoryCacheSize) {
+        // 最初のキーを削除（簡易的なLRU）
+        _memoryCache.remove(_memoryCache.keys.first);
+      }
+      _memoryCache[cacheKey] = data;
+
+      if (mounted) {
+        setState(() {
+          _thumbnailData = data;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_thumbnailData == null) {
-      return Container(color: Colors.grey[300]);
+    if (_isLoading || _thumbnailData == null) {
+      return Container(
+        color: Colors.grey[300],
+        child: _isLoading
+            ? const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : null,
+      );
     }
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 150),
-      child: Image.memory(
-        _thumbnailData!,
-        key: ValueKey(_thumbnailData?.hashCode),
-        fit: BoxFit.cover,
-      ),
+
+    return Image.memory(
+      _thumbnailData!,
+      fit: BoxFit.cover,
+      gaplessPlayback: true, // 画像切り替え時のちらつきを防ぐ
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          color: Colors.grey[400],
+          child: const Icon(Icons.broken_image, color: Colors.white),
+        );
+      },
     );
   }
 }

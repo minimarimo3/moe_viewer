@@ -68,12 +68,12 @@ Future<Uint8List> _generateThumbnail(ThumbnailRequest request) async {
       image,
       width: targetWidth,
       height: targetHeight,
-      interpolation: img.Interpolation.linear, // 高品質な補間を指定
+      interpolation: img.Interpolation.average, // 高速な補間方法に変更
     );
 
     final result = Uint8List.fromList(
-      img.encodeJpg(thumbnail, quality: 90),
-    ); // 高品質を維持
+      img.encodeJpg(thumbnail, quality: 85), // 品質を少し下げて高速化
+    );
     log('Thumbnail generation completed for: $filePath');
 
     return result;
