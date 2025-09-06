@@ -1138,8 +1138,7 @@ class AiService {
 
   /// タグがNSFWかどうかを判定する
   bool isNsfw(String label) {
-    // rating系タグでrating_general以外はNSFW
-    if (label.startsWith('rating_') && label != 'rating_general') {
+    if (label == "rating_explicit" || label == "rating_sensitive") {
       return true;
     }
     return false;

@@ -441,6 +441,7 @@ class _TagViewDialogState extends State<TagViewDialog>
     );
   }
 
+  /*
   Widget _buildSearchBar() {
     final theme = Theme.of(context);
     return Container(
@@ -501,6 +502,7 @@ class _TagViewDialogState extends State<TagViewDialog>
       ),
     );
   }
+  */
 
   Widget _buildStatsBar() {
     final theme = Theme.of(context);
@@ -622,7 +624,7 @@ class _TagViewDialogState extends State<TagViewDialog>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildStatsBar(),
-                        _buildSearchBar(),
+                        // _buildSearchBar(),
                         _buildNsfwSection(),
                         _buildTagSection(
                           'ユーザータグ',
