@@ -104,7 +104,7 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
                 index: index,
                 highlightColor: Colors.transparent,
                 child: VisibilityDetector(
-                  key: ValueKey('vis_$index'),
+                  key: ValueKey('vis_grid_$index'),
                   onVisibilityChanged: (info) {
                     // 一定以上見えているもののみ採用（50%以上）
                     if (info.visibleFraction >= 0.5) {

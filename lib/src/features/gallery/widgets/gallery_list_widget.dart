@@ -73,30 +73,39 @@ class GalleryListWidget extends StatelessWidget {
                   item,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      height: 200,
-                      color: Colors.grey[300],
-                      child: const Icon(Icons.broken_image, size: 50),
+                    // レイアウトシフトを避けるため、エラー時も安定した比率で確保
+                    return AspectRatio(
+                      aspectRatio: (4 / 3),
+                      child: Container(
+                        color: Colors.grey[300],
+                        child: const Icon(Icons.broken_image, size: 50),
+                      ),
                     );
                   },
                 ),
               ),
             );
           } else if (snapshot.hasError) {
-            return Container(
-              height: 200,
-              color: Colors.grey[300],
-              child: const Icon(Icons.error, size: 50),
+            // 読み込み失敗時も固定高さではなく比率で領域を確保
+            return AspectRatio(
+              aspectRatio: (4 / 3),
+              child: Container(
+                color: Colors.grey[300],
+                child: const Icon(Icons.error, size: 50),
+              ),
             );
           } else {
-            return Container(
-              height: 200,
-              color: Colors.grey[200],
-              child: const Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+            // 読み込み待機中も概ね4:3で先にレイアウトを安定させる
+            return AspectRatio(
+              aspectRatio: (4 / 3),
+              child: Container(
+                color: Colors.grey[200],
+                child: const Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
               ),
             );

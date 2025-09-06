@@ -137,22 +137,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       // 現在表示されている最新の画像パスを保存
       String? currentImagePath;
 
-      if (settings.gridCrossAxisCount > 1) {
-        // グリッド表示の場合
-        if (_autoScrollController.hasClients && _displayItems.isNotEmpty) {
-          final screenWidth = MediaQuery.of(context).size.width;
-          final itemSize = screenWidth / settings.gridCrossAxisCount;
-          final rowIndex = (_autoScrollController.offset / itemSize).floor();
-          final itemIndex = (rowIndex * settings.gridCrossAxisCount).clamp(
-            0,
-            _displayItems.length - 1,
-          );
-
-          if (itemIndex < _imageFilesForDetail.length) {
-            currentImagePath = _imageFilesForDetail[itemIndex].path;
-          }
-        }
-      } else {
+      if (settings.gridCrossAxisCount == 1) {
         // 1列表示の場合
         final positions = _itemPositionsListener.itemPositions.value;
         if (positions.isNotEmpty && _imageFilesForDetail.isNotEmpty) {
