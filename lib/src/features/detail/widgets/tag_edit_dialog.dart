@@ -392,12 +392,12 @@ class _TagEditDialogState extends State<TagEditDialog> {
                                 ),
                                 decoration: BoxDecoration(
                                   color: (_nsfwRating?['isNsfw'] == false)
-                                      ? Colors.grey.withValues(alpha: 0.3)
-                                      : Colors.grey.withValues(alpha: 0.1),
+                                      ? Colors.green.withValues(alpha: 0.18)
+                                      : Colors.grey.withValues(alpha: 0.08),
                                   borderRadius: BorderRadius.circular(8.0),
                                   border: Border.all(
                                     color: (_nsfwRating?['isNsfw'] == false)
-                                        ? Colors.grey[600]!
+                                        ? Colors.green[600]!
                                         : Colors.grey.withValues(alpha: 0.3),
                                     width: (_nsfwRating?['isNsfw'] == false)
                                         ? 2.0
@@ -409,7 +409,9 @@ class _TagEditDialogState extends State<TagEditDialog> {
                                   children: [
                                     Icon(
                                       Icons.child_friendly,
-                                      color: Colors.grey[600],
+                                      color: (_nsfwRating?['isNsfw'] == false)
+                                          ? Colors.green[600]
+                                          : Colors.grey[600],
                                       size: 20,
                                     ),
                                     const SizedBox(width: 8.0),
@@ -417,8 +419,13 @@ class _TagEditDialogState extends State<TagEditDialog> {
                                       'U-18',
                                       style: TextStyle(
                                         fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.grey[600],
+                                        fontWeight:
+                                            (_nsfwRating?['isNsfw'] == false)
+                                            ? FontWeight.w700
+                                            : FontWeight.w600,
+                                        color: (_nsfwRating?['isNsfw'] == false)
+                                            ? Colors.green[800]
+                                            : Colors.grey[600],
                                       ),
                                     ),
                                   ],
