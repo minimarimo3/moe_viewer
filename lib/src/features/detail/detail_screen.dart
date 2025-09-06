@@ -131,6 +131,9 @@ class _DetailScreenState extends State<DetailScreen>
       initialSize = 0.45;
     }
 
+    // mountedチェックを追加してからshowModalBottomSheetを呼び出し
+    if (!mounted) return;
+
     // DraggableScrollableSheetのコントローラーを作成
     final DraggableScrollableController draggableController =
         DraggableScrollableController();

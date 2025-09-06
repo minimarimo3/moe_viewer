@@ -700,14 +700,16 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                       final paths = indices
                           .map((i) => _imageFilesForDetail[i].path)
                           .toList();
+                      final messenger = ScaffoldMessenger.of(context);
                       final albumId = await pickAlbumDialog(context);
+                      if (!mounted) return;
                       if (albumId == null) return;
                       await DatabaseHelper.instance.addImagesToAlbum(
                         albumId,
                         paths,
                       );
                       if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      messenger.showSnackBar(
                         SnackBar(content: Text('${paths.length}件をアルバムに追加しました')),
                       );
                     },
@@ -1078,9 +1080,11 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     }
 
     _resetScrollAndFilters();
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('表示順をシャッフルしました。')));
+    if (!mounted) return;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    scaffoldMessenger.showSnackBar(
+      const SnackBar(content: Text('表示順をシャッフルしました。')),
+    );
   }
 
   Future<void> _resetToOriginalOrder() async {
@@ -1092,9 +1096,11 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     await _loadImages();
 
     _resetScrollAndFilters();
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('表示順を最初の状態に戻しました。')));
+    if (!mounted) return;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    scaffoldMessenger.showSnackBar(
+      const SnackBar(content: Text('表示順を最初の状態に戻しました。')),
+    );
   }
 
   void _resetScrollAndFilters() {
