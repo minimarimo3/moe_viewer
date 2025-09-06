@@ -32,8 +32,8 @@ class AlbumCard extends StatelessWidget {
     final theme = Theme.of(context);
     final borderRadius = BorderRadius.circular(14);
 
-    // Up to 4 images for mosaic
-    final coverFiles = files.take(4).toList(growable: false);
+    // Up to 2 images for mosaic
+    final coverFiles = files.take(2).toList(growable: false);
     final countText = files.length.toString();
 
     return Material(
@@ -161,44 +161,17 @@ class _MosaicCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Each cell roughly half width/height in square card
+    // Each cell roughly half width in square card for 2 images
     final cellPx = (thumbPx / 2).round();
     if (files.length == 1) {
       return _thumb(files[0], thumbPx, BoxFit.cover);
     }
+    // Display 2 images side by side
     return Row(
       children: [
-        Expanded(
-          child: Column(
-            children: [
-              Expanded(child: _thumb(files[0], cellPx, BoxFit.cover)),
-              const SizedBox(height: 1),
-              Expanded(
-                child: _thumb(
-                  files.length > 2 ? files[2] : files[0],
-                  cellPx,
-                  BoxFit.cover,
-                ),
-              ),
-            ],
-          ),
-        ),
+        Expanded(child: _thumb(files[0], cellPx, BoxFit.cover)),
         const SizedBox(width: 1),
-        Expanded(
-          child: Column(
-            children: [
-              Expanded(child: _thumb(files[1], cellPx, BoxFit.cover)),
-              const SizedBox(height: 1),
-              Expanded(
-                child: _thumb(
-                  files.length > 3 ? files[3] : files[1],
-                  cellPx,
-                  BoxFit.cover,
-                ),
-              ),
-            ],
-          ),
-        ),
+        Expanded(child: _thumb(files[1], cellPx, BoxFit.cover)),
       ],
     );
   }
@@ -212,7 +185,7 @@ class _MosaicCover extends StatelessWidget {
           imageFile: file,
           width: px,
           key: ValueKey('${file.path}_$px'),
-          // アルバム表示では標準品質で高速化
+          // アルバム表示では軽量版で高速化（標準品質使用）
           highQuality: false,
         ),
       ),
