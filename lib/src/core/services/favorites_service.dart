@@ -27,12 +27,7 @@ class FavoritesService {
     final isFav = before.contains(ReservedTags.favorite);
     final after = ReservedTags.toggleFavorite(before, !isFav);
     await DatabaseHelper.instance.insertOrUpdateTag(path, after);
-    final nowFav = !isFav;
-    // お気に入り登録時にベースサムネイルを事前生成（Fire-and-forget）
-    if (nowFav) {
-      unawaited(precacheBaseThumbnail(path));
-    }
-    return nowFav;
+    return !isFav;
   }
 
   /// お気に入りのファイルパス一覧を取得

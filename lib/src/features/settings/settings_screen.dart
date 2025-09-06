@@ -205,7 +205,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           content: const SingleChildScrollView(
                             child: Text(
                               'このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。\n\n'
-                              'この権限を許可すると、OSの標準アルバム以外の、あらゆる場所にある画像フォルダをアプリで表示できるようになります。\n\n',
+                              'この権限を許可すると、OSの標準アルバム以外の、あらゆる場所にある画像フォルダをアプリで表示できるようになります。',
                             ),
                           ),
                           actions: [
