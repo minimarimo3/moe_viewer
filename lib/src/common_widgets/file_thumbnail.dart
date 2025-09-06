@@ -21,6 +21,7 @@ class FileThumbnail extends StatefulWidget {
   final int width;
   final int? height;
   final bool highQuality; // アルバム表示など高品質が必要な場合のオプション
+  final bool preserveAspectRatio; // アスペクト比を保持するかどうか
 
   const FileThumbnail({
     super.key,
@@ -28,6 +29,7 @@ class FileThumbnail extends StatefulWidget {
     required this.width,
     this.height,
     this.highQuality = false,
+    this.preserveAspectRatio = false, // デフォルトは従来通り
   });
 
   @override
@@ -175,7 +177,7 @@ class _FileThumbnailState extends State<FileThumbnail> {
 
     return Image.memory(
       _thumbnailData!,
-      fit: BoxFit.cover,
+      fit: widget.preserveAspectRatio ? BoxFit.contain : BoxFit.cover,
       gaplessPlayback: true, // 画像切り替え時のちらつきを防ぐ
       errorBuilder: (context, error, stackTrace) {
         return Container(
