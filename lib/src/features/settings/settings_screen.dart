@@ -251,15 +251,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               ListTile(
                 leading: const Icon(Icons.play_circle_outline),
-                title: const Text('画像自動スクロール間隔'),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: AutoScrollIntervalSelector(
-                    currentValue: settings.autoScrollInterval,
-                    onChanged: (value) {
-                      settings.setAutoScrollInterval(value);
-                    },
-                  ),
+                subtitle: AutoScrollIntervalSelector(
+                  currentValue: settings.autoScrollInterval,
+                  onChanged: (value) {
+                    settings.setAutoScrollInterval(value);
+                  },
                 ),
               ),
 

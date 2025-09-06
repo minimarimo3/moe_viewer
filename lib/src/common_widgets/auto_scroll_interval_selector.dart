@@ -59,43 +59,25 @@ class _AutoScrollIntervalSelectorState
     final milliseconds = (widget.currentValue * 100);
     final currentDuration = Duration(milliseconds: milliseconds);
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(
-          context,
-        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.schedule,
-            size: 20,
-            color: Theme.of(context).colorScheme.primary,
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            '現在の画像自動スクロール間隔: ${_formatDuration(currentDuration)}',
+            style: TextStyle(fontWeight: FontWeight.w500),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '現在の設定: ${_formatDuration(currentDuration)}',
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
+        ),
+        const SizedBox(width: 8),
+        ElevatedButton.icon(
+          onPressed: _showTimerPickerDialog,
+          icon: const Icon(Icons.timer, size: 18),
+          label: const Text('時間を変更'),
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            minimumSize: const Size(0, 36),
           ),
-          const SizedBox(width: 8),
-          ElevatedButton.icon(
-            onPressed: _showTimerPickerDialog,
-            icon: const Icon(Icons.timer, size: 18),
-            label: const Text('時間を変更'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              minimumSize: const Size(0, 36),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
