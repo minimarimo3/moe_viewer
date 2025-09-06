@@ -94,7 +94,6 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       viewportBoundaryGetter: () =>
           Rect.fromLTRB(0, 0, 0, MediaQuery.of(context).size.height),
       axis: Axis.vertical,
-      suggestedRowHeight: 200.0, // 推定行高を設定してスクロール精度を改善
     );
 
     _appBarAnimationController = AnimationController(
@@ -283,17 +282,41 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
               // スクロール完了後、微調整のために少し待機
               await Future.delayed(const Duration(milliseconds: 200));
 
+              // レイアウトが落ち着いた後に、ごく短い補正スクロールで位置ずれを解消
+              try {
+                await _autoScrollController.scrollToIndex(
+                  targetIndex,
+                  preferPosition: AutoScrollPosition.begin,
+                  duration: const Duration(milliseconds: 1),
+                );
+              } catch (_) {}
+
               if (mounted) {
                 setState(() => _restoringPosition = false);
               }
             } else if (settings.gridCrossAxisCount == 1 &&
                 _itemScrollController.isAttached) {
-              // リスト表示の場合：直接インデックスにジャンプ
-              _itemScrollController.jumpTo(index: targetIndex);
-              // 少し待ってから解除（ジャンプは同期なので視覚的な余裕を持たせる）
-              Future.delayed(const Duration(milliseconds: 400), () {
-                if (mounted) setState(() => _restoringPosition = false);
-              });
+              // リスト表示の場合：アニメーションスクロール＋アライメント指定で精度を向上
+              try {
+                await _itemScrollController.scrollTo(
+                  index: targetIndex,
+                  duration: const Duration(milliseconds: 450),
+                  curve: Curves.easeOutCubic,
+                  alignment: 0.0, // 先頭合わせ
+                );
+                // 微調整（ごく短時間の再スクロール）
+                await _itemScrollController.scrollTo(
+                  index: targetIndex,
+                  duration: const Duration(milliseconds: 1),
+                  alignment: 0.0,
+                );
+              } catch (_) {
+                // scrollTo未対応状態などのフォールバック
+                try {
+                  _itemScrollController.jumpTo(index: targetIndex);
+                } catch (_) {}
+              }
+              if (mounted) setState(() => _restoringPosition = false);
             } else {
               setState(() => _restoringPosition = false);
             }
@@ -317,15 +340,38 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
                 await Future.delayed(const Duration(milliseconds: 200));
 
+                // 微補正
+                try {
+                  await _autoScrollController.scrollToIndex(
+                    index,
+                    preferPosition: AutoScrollPosition.begin,
+                    duration: const Duration(milliseconds: 1),
+                  );
+                } catch (_) {}
+
                 if (mounted) {
                   setState(() => _restoringPosition = false);
                 }
               } else if (settings.gridCrossAxisCount == 1 &&
                   _itemScrollController.isAttached) {
-                _itemScrollController.jumpTo(index: index);
-                Future.delayed(const Duration(milliseconds: 400), () {
-                  if (mounted) setState(() => _restoringPosition = false);
-                });
+                try {
+                  await _itemScrollController.scrollTo(
+                    index: index,
+                    duration: const Duration(milliseconds: 450),
+                    curve: Curves.easeOutCubic,
+                    alignment: 0.0,
+                  );
+                  await _itemScrollController.scrollTo(
+                    index: index,
+                    duration: const Duration(milliseconds: 1),
+                    alignment: 0.0,
+                  );
+                } catch (_) {
+                  try {
+                    _itemScrollController.jumpTo(index: index);
+                  } catch (_) {}
+                }
+                if (mounted) setState(() => _restoringPosition = false);
               } else {
                 setState(() => _restoringPosition = false);
               }
@@ -351,15 +397,38 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
               await Future.delayed(const Duration(milliseconds: 200));
 
+              // 微補正
+              try {
+                await _autoScrollController.scrollToIndex(
+                  index,
+                  preferPosition: AutoScrollPosition.begin,
+                  duration: const Duration(milliseconds: 1),
+                );
+              } catch (_) {}
+
               if (mounted) {
                 setState(() => _restoringPosition = false);
               }
             } else if (settings.gridCrossAxisCount == 1 &&
                 _itemScrollController.isAttached) {
-              _itemScrollController.jumpTo(index: index);
-              Future.delayed(const Duration(milliseconds: 400), () {
-                if (mounted) setState(() => _restoringPosition = false);
-              });
+              try {
+                await _itemScrollController.scrollTo(
+                  index: index,
+                  duration: const Duration(milliseconds: 450),
+                  curve: Curves.easeOutCubic,
+                  alignment: 0.0,
+                );
+                await _itemScrollController.scrollTo(
+                  index: index,
+                  duration: const Duration(milliseconds: 1),
+                  alignment: 0.0,
+                );
+              } catch (_) {
+                try {
+                  _itemScrollController.jumpTo(index: index);
+                } catch (_) {}
+              }
+              if (mounted) setState(() => _restoringPosition = false);
             } else {
               setState(() => _restoringPosition = false);
             }
