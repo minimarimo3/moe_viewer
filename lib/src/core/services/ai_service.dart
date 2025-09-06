@@ -669,6 +669,7 @@ class TfliteNhwcModelRunner implements ModelRunner {
     );
   }
 
+  /*
   List<String> _postprocess(
     List<double> probs,
     List<String> labels, {
@@ -699,6 +700,7 @@ class TfliteNhwcModelRunner implements ModelRunner {
     final k = math.min(topK, all.length);
     return all.take(k).map((e) => e.label).toList(growable: false);
   }
+  */
 
   double _sigmoid(double x) {
     if (x >= 0) {
@@ -930,11 +932,7 @@ class _PreprocessedImage {
   _PreprocessedImage(this.image, this.base64Image);
 }
 
-_PreprocessedImage _preprocess(
-  String filePath,
-  int inputSize, {
-  bool normalize = false,
-}) {
+_PreprocessedImage _preprocess(String filePath, int inputSize) {
   final imageFile = File(filePath);
   final imageBytes = imageFile.readAsBytesSync();
   img.Image? image = img.decodeImage(imageBytes);

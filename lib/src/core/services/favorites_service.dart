@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:async';
 import 'database_helper.dart';
 import '../utils/pixiv_utils.dart';
-import 'thumbnail_service.dart';
 
 /// お気に入りを予約タグとして image_tags に保存/読込するサービス
 class FavoritesService {
