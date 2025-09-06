@@ -346,7 +346,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             (f) => generateAndCacheGridThumbnail(
               f.path,
               tileSize,
-              highQuality: true, // アルバムでは高品質
+              highQuality: false, // 通常のサムネイル品質を使用
             ),
           ),
         );

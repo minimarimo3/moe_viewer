@@ -61,7 +61,7 @@ class _FavoritesAlbumScreenState extends State<FavoritesAlbumScreen> {
             (f) => generateAndCacheGridThumbnail(
               f.path,
               screenWidth.round(),
-              highQuality: true, // お気に入りでは高品質
+              highQuality: false, // 通常のサムネイル品質を使用
             ),
           ),
         );
