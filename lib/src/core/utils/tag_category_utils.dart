@@ -71,14 +71,28 @@ class TagCategoryUtils {
     return RegExp(r'^(19|20)\d{2}$').hasMatch(tag);
   }
 
+  /// 予約タグかどうかを判定する
+  static bool isReservedTag(String tag) {
+    // 予約タグは __で始まり__で終わるパターン
+    return tag.startsWith('__') && tag.endsWith('__');
+  }
+
+  /// 「お気に入り」タグかどうかを判定する
+  static bool isFavoriteTag(String tag) {
+    return tag == '__favorite__' || tag == '__お気に入り__';
+  }
+
   /// AIタグをキャラタグ、特徴タグ、その他に分類する
   static Map<String, List<String>> categorizeAiTags(List<String> aiTags) {
     final characterTags = <String>[];
     final featureTags = <String>[];
     final otherTags = <String>[];
+    final userTags = <String>[]; // 予約タグ（お気に入りなど）をユーザータグとして分類
 
     for (final tag in aiTags) {
-      if (isCharacter(tag)) {
+      if (isReservedTag(tag)) {
+        userTags.add(tag);
+      } else if (isCharacter(tag)) {
         characterTags.add(tag);
       } else if (isYear(tag)) {
         otherTags.add(tag);
@@ -91,6 +105,7 @@ class TagCategoryUtils {
       'character': characterTags,
       'feature': featureTags,
       'other': otherTags,
+      'user': userTags,
     };
   }
 }

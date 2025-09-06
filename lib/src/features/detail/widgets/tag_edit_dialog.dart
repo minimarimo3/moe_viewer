@@ -49,11 +49,33 @@ class _TagEditDialogState extends State<TagEditDialog> {
       final availableTags = await db.getAllTags();
       final aliases = await db.getAllTagAliases();
 
+      // 予約タグを分離してマニュアルタグに統合するが、お気に入りタグは除外
+      final rawAiTags = allTags['ai'] ?? [];
+      final rawManualTags = allTags['manual'] ?? [];
+
+      final categorized = TagCategoryUtils.categorizeAiTags(rawAiTags);
+      final userTags = categorized['user'] ?? [];
+      final filteredAiTags = rawAiTags
+          .where((tag) => !userTags.contains(tag))
+          .toList();
+
+      // マニュアルタグに予約タグを統合するが、お気に入りタグは除外
+      final nonFavoriteUserTags = userTags
+          .where((tag) => !TagCategoryUtils.isFavoriteTag(tag))
+          .toList();
+      final filteredRawManualTags = rawManualTags
+          .where((tag) => !TagCategoryUtils.isFavoriteTag(tag))
+          .toList();
+      final combinedManualTags = <String>[
+        ...filteredRawManualTags,
+        ...nonFavoriteUserTags,
+      ];
+
       setState(() {
-        _aiTags = allTags['ai'] ?? [];
+        _aiTags = filteredAiTags;
         _aiCharacterTags = allTags['aiCharacter'] ?? [];
         _aiFeatureTags = allTags['aiFeature'] ?? [];
-        _manualTags = allTags['manual'] ?? [];
+        _manualTags = combinedManualTags;
         _allAvailableTags = availableTags;
         _tagAliases = aliases;
         _isLoading = false;

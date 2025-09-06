@@ -72,7 +72,10 @@ class _DetailScreenState extends State<DetailScreen>
     // タグを別名に変換
     final db = DatabaseHelper.instance;
     final aiTags = await db.getDisplayTagNames(rawAiTags);
-    final manualTags = await db.getDisplayTagNames(rawManualTags);
+    final rawManualTagsFiltered = rawManualTags
+        .where((tag) => !TagCategoryUtils.isFavoriteTag(tag))
+        .toList();
+    final manualTags = await db.getDisplayTagNames(rawManualTagsFiltered);
     final aiCharacterTagsFromDB = rawAiCharacterTagsFromDB != null
         ? await db.getDisplayTagNames(rawAiCharacterTagsFromDB)
         : null;
@@ -90,6 +93,7 @@ class _DetailScreenState extends State<DetailScreen>
     // 分類済みタグが利用可能な場合はそれを使用、そうでない場合は従来の方法で分類
     List<String> aiCharacterTags;
     List<String> aiFeatureTags;
+    List<String> combinedManualTags = List.from(manualTags);
 
     if (aiCharacterTagsFromDB != null && aiFeatureTagsFromDB != null) {
       // データベースから分類済みタグを使用
@@ -101,10 +105,19 @@ class _DetailScreenState extends State<DetailScreen>
       final categorizedAiTags = TagCategoryUtils.categorizeAiTags(aiTags);
       aiCharacterTags = categorizedAiTags['character'] ?? [];
       aiFeatureTags = categorizedAiTags['feature'] ?? [];
+
+      // 予約タグ（お気に入りなど）を手動タグに統合するが、お気に入りタグは除外
+      final userTags = categorizedAiTags['user'] ?? [];
+      final nonFavoriteUserTags = userTags
+          .where((tag) => !TagCategoryUtils.isFavoriteTag(tag))
+          .toList();
+      combinedManualTags.addAll(nonFavoriteUserTags);
     }
 
     final totalTagCount =
-        manualTags.length + aiCharacterTags.length + aiFeatureTags.length;
+        combinedManualTags.length +
+        aiCharacterTags.length +
+        aiFeatureTags.length;
     if (totalTagCount > 20) {
       initialSize = 0.7;
     } else if (totalTagCount > 10) {
@@ -354,14 +367,14 @@ class _DetailScreenState extends State<DetailScreen>
                           ),
 
                           // 3. 手動タグセクション
-                          if (manualTags.isNotEmpty) ...[
+                          if (combinedManualTags.isNotEmpty) ...[
                             const SizedBox(height: 24.0),
                             Row(
                               children: [
                                 const Icon(Icons.edit, size: 20),
                                 const SizedBox(width: 8.0),
                                 Text(
-                                  'ユーザータグ (${manualTags.length}個)',
+                                  'ユーザータグ (${combinedManualTags.length}個)',
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
@@ -373,7 +386,7 @@ class _DetailScreenState extends State<DetailScreen>
                             Wrap(
                               spacing: 8.0,
                               runSpacing: 8.0,
-                              children: manualTags
+                              children: combinedManualTags
                                   .map(
                                     (tag) => Chip(
                                       label: Text(tag),
