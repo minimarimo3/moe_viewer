@@ -158,6 +158,10 @@ class SettingsProvider extends ChangeNotifier {
     // 自動スクロール間隔設定
     try {
       _autoScrollInterval = await _settingsRepository.loadAutoScrollInterval();
+      // 最小値制限のみ（0.5秒、つまり5）、上限は設けない
+      if (_autoScrollInterval < 5) {
+        _autoScrollInterval = 5; // 最小値：0.5秒
+      }
     } catch (_) {
       _autoScrollInterval = 30; // デフォルト3秒
     }
@@ -249,7 +253,8 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   Future<void> setAutoScrollInterval(int interval) async {
-    if (interval < 1) return; // 最小値制限
+    // 最小値制限：0.5秒（5）のみ設定、上限は設けない
+    if (interval < 5) interval = 5; // 最小値制限：0.5秒
     _autoScrollInterval = interval;
     await _settingsRepository.saveAutoScrollInterval(interval);
     notifyListeners();

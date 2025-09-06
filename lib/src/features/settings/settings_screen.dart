@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/providers/settings_provider.dart';
 import '../../common_widgets/dialogs.dart';
+import '../../common_widgets/auto_scroll_interval_selector.dart';
 import '../../core/services/ai_service.dart';
 import '../../core/models/ai_model_definition.dart';
 import '../../core/models/folder_setting.dart';
@@ -30,10 +31,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Providerから現在の設定を取得
-      final settings = context.read<SettingsProvider>();
-
       // 現在選択されているモデルの定義を取得
+      final settings = context.read<SettingsProvider>();
       final selectedModelDef = availableModels.firstWhere(
         (m) => m.id == settings.selectedModelId,
         orElse: () => availableModels.first,
@@ -44,6 +43,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     _checkFullAccessPermission();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   bool _isRestrictedPath(String path) {
@@ -247,19 +251,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               ListTile(
                 leading: const Icon(Icons.play_circle_outline),
-                title: Text(
-                  '画像自動スクロール間隔 (${(settings.autoScrollInterval / 10).toStringAsFixed(1)}秒)',
-                ),
-                subtitle: Slider(
-                  value: settings.autoScrollInterval.toDouble(),
-                  min: 5, // 0.5秒
-                  max: 100, // 10秒
-                  divisions: 95,
-                  label:
-                      '${(settings.autoScrollInterval / 10).toStringAsFixed(1)}秒',
-                  onChanged: (double value) {
-                    settings.setAutoScrollInterval(value.toInt());
-                  },
+                title: const Text('画像自動スクロール間隔'),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: AutoScrollIntervalSelector(
+                    currentValue: settings.autoScrollInterval,
+                    onChanged: (value) {
+                      settings.setAutoScrollInterval(value);
+                    },
+                  ),
                 ),
               ),
 
@@ -301,7 +301,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ).colorScheme.onPrimaryContainer,
                         backgroundColor: Theme.of(
                           context,
-                        ).colorScheme.surfaceVariant,
+                        ).colorScheme.surfaceContainerHighest,
                         labelStyle: TextStyle(
                           color: isVisible
                               ? Theme.of(context).colorScheme.onPrimaryContainer
