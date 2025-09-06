@@ -39,6 +39,9 @@ class _DetailScreenState extends State<DetailScreen>
   late AnimationController _animationController;
   Animation<Matrix4>? _animation;
 
+  // SettingsProvider の参照を保持（dispose で context を使わないため）
+  SettingsProvider? _settings;
+
   // ★★★ InteractiveViewerの拡大・移動状態を直接操作するコントローラー ★★★
   final _transformationController = TransformationController();
 
@@ -555,6 +558,13 @@ class _DetailScreenState extends State<DetailScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // listen: false で依存を登録せず参照のみを保持
+    _settings = Provider.of<SettingsProvider>(context, listen: false);
+  }
+
+  @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
@@ -615,8 +625,8 @@ class _DetailScreenState extends State<DetailScreen>
     // 最新の画像パスを確実に保存
     if (_currentIndex < widget.imageFileList.length) {
       final currentImagePath = widget.imageFileList[_currentIndex].path;
-      final settings = Provider.of<SettingsProvider>(context, listen: false);
-      settings.setLastViewedImagePath(currentImagePath);
+      // dispose 中は context を使わず、事前に保持した参照を利用
+      _settings?.setLastViewedImagePath(currentImagePath);
     }
 
     _pageController.dispose();
