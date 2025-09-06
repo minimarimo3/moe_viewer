@@ -12,6 +12,7 @@ class SettingsRepository {
   static const String _gridCrossAxisCountKey = 'grid_cross_axis_count';
   static const String _themeModeKey = 'theme_mode';
   static const String _lastScrollIndexKey = 'last_scroll_index';
+  static const String _lastViewedImagePathKey = 'last_viewed_image_path';
   static const String _shuffleOrderKey = 'shuffle_order';
 
   Future<void> saveFolderSettings(List<FolderSetting> folderSettings) async {
@@ -81,6 +82,20 @@ class SettingsRepository {
   Future<int> loadLastScrollIndex() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_lastScrollIndexKey) ?? 0;
+  }
+
+  Future<void> saveLastViewedImagePath(String? imagePath) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (imagePath != null) {
+      await prefs.setString(_lastViewedImagePathKey, imagePath);
+    } else {
+      await prefs.remove(_lastViewedImagePathKey);
+    }
+  }
+
+  Future<String?> loadLastViewedImagePath() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_lastViewedImagePathKey);
   }
 
   Future<void> saveNsfwFilter(bool isEnabled) async {

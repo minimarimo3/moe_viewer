@@ -90,6 +90,9 @@ class SettingsProvider extends ChangeNotifier {
   int _lastScrollIndex = 0;
   int get lastScrollIndex => _lastScrollIndex;
 
+  String? _lastViewedImagePath;
+  String? get lastViewedImagePath => _lastViewedImagePath;
+
   List<FolderSetting> _folderSettings = [];
   List<FolderSetting> get folderSettings => _folderSettings;
 
@@ -115,6 +118,11 @@ class SettingsProvider extends ChangeNotifier {
     _gridCrossAxisCount = await _settingsRepository.loadGridCrossAxisCount();
     _themeMode = await _settingsRepository.loadThemeMode();
     _lastScrollIndex = await _settingsRepository.loadLastScrollIndex();
+    try {
+      _lastViewedImagePath = await _settingsRepository.loadLastViewedImagePath();
+    } catch (e) {
+      _lastViewedImagePath = null;
+    }
     _folderSettings = await _settingsRepository.loadFolderSettings();
     _nsfwFilterEnabled = await _settingsRepository.loadNsfwFilter();
     _shuffleOrder = await _settingsRepository.loadShuffleOrder();
@@ -172,6 +180,15 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> setLastScrollIndex(int index) async {
     _lastScrollIndex = index;
     await _settingsRepository.saveLastScrollIndex(index);
+  }
+
+  Future<void> setLastViewedImagePath(String? imagePath) async {
+    _lastViewedImagePath = imagePath;
+    try {
+      await _settingsRepository.saveLastViewedImagePath(imagePath);
+    } catch (e) {
+      log('Error saving last viewed image path: $e');
+    }
   }
 
   Future<void> saveShuffleOrder(List<int> order) async {

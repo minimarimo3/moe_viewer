@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'dart:async';
 
+import 'package:provider/provider.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
 import '../../core/services/database_helper.dart';
+import '../../core/providers/settings_provider.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -563,6 +565,15 @@ class _DetailScreenState extends State<DetailScreen>
     );
     _saveCurrentState();
 
+    // 初期画像パスを保存
+    if (_currentIndex < widget.imageFileList.length) {
+      final currentImagePath = widget.imageFileList[_currentIndex].path;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final settings = Provider.of<SettingsProvider>(context, listen: false);
+        settings.setLastViewedImagePath(currentImagePath);
+      });
+    }
+
     // ★★★ InteractiveViewerのスケール（拡大率）が変化したのをリッスンする ★★★
     _transformationController.addListener(() {
       // 拡大率が1.0（等倍）でない場合、ページングを無効にする
@@ -601,6 +612,13 @@ class _DetailScreenState extends State<DetailScreen>
 
   @override
   void dispose() {
+    // 最新の画像パスを確実に保存
+    if (_currentIndex < widget.imageFileList.length) {
+      final currentImagePath = widget.imageFileList[_currentIndex].path;
+      final settings = Provider.of<SettingsProvider>(context, listen: false);
+      settings.setLastViewedImagePath(currentImagePath);
+    }
+    
     _pageController.dispose();
     // ★★★ この画面を離れるときに、必ずシステムUIを元に戻す
     _animationController.dispose(); // ★★★ disposeを追加
@@ -752,6 +770,13 @@ class _DetailScreenState extends State<DetailScreen>
               });
               _saveCurrentState();
               _precacheAdjacentImages(index);
+              
+              // 最新の画像パスを保存（オートスクロール機能のため）
+              if (index < widget.imageFileList.length) {
+                final currentImagePath = widget.imageFileList[index].path;
+                final settings = Provider.of<SettingsProvider>(context, listen: false);
+                settings.setLastViewedImagePath(currentImagePath);
+              }
             },
             itemCount: widget.imageFileList.length,
             itemBuilder: (context, index) {

@@ -105,7 +105,7 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
     return FutureBuilder<List<Widget>>(
       future: _buildRowItems(startIndex, endIndex, itemWidth, thumbnailSize),
       builder: (context, snapshot) {
-        if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+        if (snapshot.hasData) {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2.0, vertical: 1.0),
             child: Row(
@@ -115,7 +115,7 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
           );
         }
         
-        // ローディング中または空の場合
+        // ローディング中
         return SizedBox(
           height: itemWidth, // 仮の高さ
           child: Row(
@@ -170,7 +170,6 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
       aspectRatio = await _getImageAspectRatio(item);
     }
 
-    // 実際のアスペクト比を使用して高さを計算
     final itemHeight = itemWidth / aspectRatio;
 
     Widget thumbnailWidget;
@@ -191,47 +190,36 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
       thumbnailWidget = Container(color: Colors.red);
     }
 
-    return AutoScrollTag(
-      key: ValueKey(index),
-      controller: widget.autoScrollController,
-      index: index,
-      child: GestureDetector(
-        onTap: () async {
-          if (widget.onItemTap != null) {
-            widget.onItemTap!(index, item);
-            return;
-          }
-          widget.onEnterDetail?.call();
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => DetailScreen(
-                imageFileList: widget.imageFilesForDetail,
-                initialIndex: index,
-              ),
+    return GestureDetector(
+      onTap: () async {
+        if (widget.onItemTap != null) {
+          widget.onItemTap!(index, item);
+          return;
+        }
+        widget.onEnterDetail?.call();
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DetailScreen(
+              imageFileList: widget.imageFilesForDetail,
+              initialIndex: index,
             ),
-          );
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('wasOnDetailScreen', false);
-        },
-        onLongPressStart: (details) {
-          widget.onLongPress(item, details.globalPosition);
-        },
+          ),
+        );
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('wasOnDetailScreen', false);
+      },
+      onLongPressStart: (details) {
+        widget.onLongPress(item, details.globalPosition);
+      },
+      child: Container(
+        margin: const EdgeInsets.all(1.0),
         child: SizedBox(
-          width: itemWidth,
           height: itemHeight,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(4.0),
             child: RepaintBoundary(
-              child: Container(
-                width: itemWidth,
-                height: itemHeight,
-                color: Colors.grey[200],
-                child: FittedBox(
-                  fit: BoxFit.cover, // 画像を枠いっぱいにフィットさせつつ、比率は保持
-                  child: thumbnailWidget,
-                ),
-              ),
+              child: thumbnailWidget,
             ),
           ),
         ),

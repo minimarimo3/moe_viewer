@@ -13,7 +13,7 @@ import '../../core/providers/settings_provider.dart';
 import '../../core/repositories/image_repository.dart';
 import '../../core/services/database_helper.dart';
 import '../../common_widgets/pie_menu_widget.dart';
-import 'widgets/gallery_grid_widget.dart';
+import 'widgets/gallery_grid_widget_new.dart';
 import 'widgets/gallery_list_widget.dart';
 import 'utils/gallery_shuffle_utils.dart';
 import '../albums/albums_screen.dart';
@@ -129,26 +129,35 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       final settings = Provider.of<SettingsProvider>(context, listen: false);
       if (!mounted) return;
 
-      int index = 0;
+      // 現在表示されている最新の画像パスを保存
+      String? currentImagePath;
+      
       if (settings.gridCrossAxisCount > 1) {
-        // グリッド表示の場合 (近似値)
-        if (_autoScrollController.hasClients) {
+        // グリッド表示の場合
+        if (_autoScrollController.hasClients && _displayItems.isNotEmpty) {
           final screenWidth = MediaQuery.of(context).size.width;
           final itemSize = screenWidth / settings.gridCrossAxisCount;
-          index =
-              (_autoScrollController.offset / itemSize).floor() *
-              settings.gridCrossAxisCount;
+          final rowIndex = (_autoScrollController.offset / itemSize).floor();
+          final itemIndex = (rowIndex * settings.gridCrossAxisCount).clamp(0, _displayItems.length - 1);
+          
+          if (itemIndex < _imageFilesForDetail.length) {
+            currentImagePath = _imageFilesForDetail[itemIndex].path;
+          }
         }
       } else {
-        // 1列表示の場合 (正確な値)
+        // 1列表示の場合
         final positions = _itemPositionsListener.itemPositions.value;
-        if (positions.isNotEmpty) {
-          index = positions.where((pos) => pos.itemLeadingEdge < 1).last.index;
+        if (positions.isNotEmpty && _imageFilesForDetail.isNotEmpty) {
+          final visibleIndex = positions.where((pos) => pos.itemLeadingEdge < 1).last.index;
+          if (visibleIndex < _imageFilesForDetail.length) {
+            currentImagePath = _imageFilesForDetail[visibleIndex].path;
+          }
         }
       }
-      // 値が変化したときのみ更新（無駄なリビルドを防止）
-      if (settings.lastScrollIndex != index) {
-        settings.setLastScrollIndex(index);
+      
+      // 最新の画像パスが変化した場合のみ更新
+      if (currentImagePath != null && currentImagePath != settings.lastViewedImagePath) {
+        settings.setLastViewedImagePath(currentImagePath);
       }
     });
   }
@@ -236,32 +245,103 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   void _restoreScrollPositionAsync(SettingsProvider settings) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final index = settings.lastScrollIndex;
-      if (index > 0 && index < _displayItems.length) {
-        try {
-          setState(() => _restoringPosition = true);
-          if (settings.gridCrossAxisCount > 1 &&
-              _autoScrollController.hasClients) {
-            _autoScrollController
-                .scrollToIndex(index, preferPosition: AutoScrollPosition.begin)
-                .whenComplete(() {
-                  if (mounted) {
-                    setState(() => _restoringPosition = false);
-                  }
-                });
-          } else if (settings.gridCrossAxisCount == 1 &&
-              _itemScrollController.isAttached) {
-            _itemScrollController.jumpTo(index: index);
-            // 少し待ってから解除（ジャンプは同期なので視覚的な余裕を持たせる）
-            Future.delayed(const Duration(milliseconds: 400), () {
-              if (mounted) setState(() => _restoringPosition = false);
-            });
-          } else {
-            setState(() => _restoringPosition = false);
+      
+      final lastImagePath = settings.lastViewedImagePath;
+      if (lastImagePath != null && _imageFilesForDetail.isNotEmpty) {
+        // 最新の画像パスから対応するインデックスを検索
+        int targetIndex = -1;
+        for (int i = 0; i < _imageFilesForDetail.length; i++) {
+          if (_imageFilesForDetail[i].path == lastImagePath) {
+            targetIndex = i;
+            break;
           }
-        } catch (e) {
-          log('スクロール位置復元エラー: $e');
-          if (mounted) setState(() => _restoringPosition = false);
+        }
+        
+        // 対象の画像が見つかった場合、その位置にスクロール
+        if (targetIndex >= 0 && targetIndex < _displayItems.length) {
+          try {
+            setState(() => _restoringPosition = true);
+            
+            if (settings.gridCrossAxisCount > 1 && _autoScrollController.hasClients) {
+              // グリッド表示の場合：行インデックスに変換してスクロール
+              final rowIndex = (targetIndex / settings.gridCrossAxisCount).floor();
+              _autoScrollController
+                  .scrollToIndex(rowIndex, preferPosition: AutoScrollPosition.begin)
+                  .whenComplete(() {
+                    if (mounted) {
+                      setState(() => _restoringPosition = false);
+                    }
+                  });
+            } else if (settings.gridCrossAxisCount == 1 && _itemScrollController.isAttached) {
+              // リスト表示の場合：直接インデックスにジャンプ
+              _itemScrollController.jumpTo(index: targetIndex);
+              // 少し待ってから解除（ジャンプは同期なので視覚的な余裕を持たせる）
+              Future.delayed(const Duration(milliseconds: 400), () {
+                if (mounted) setState(() => _restoringPosition = false);
+              });
+            } else {
+              setState(() => _restoringPosition = false);
+            }
+          } catch (e) {
+            log('スクロール位置復元エラー: $e');
+            if (mounted) setState(() => _restoringPosition = false);
+          }
+        } else {
+          // 対象の画像が見つからない場合は、従来の方式（インデックスベース）でフォールバック
+          final index = settings.lastScrollIndex;
+          if (index > 0 && index < _displayItems.length) {
+            try {
+              setState(() => _restoringPosition = true);
+              if (settings.gridCrossAxisCount > 1 && _autoScrollController.hasClients) {
+                final rowIndex = (index / settings.gridCrossAxisCount).floor();
+                _autoScrollController
+                    .scrollToIndex(rowIndex, preferPosition: AutoScrollPosition.begin)
+                    .whenComplete(() {
+                      if (mounted) {
+                        setState(() => _restoringPosition = false);
+                      }
+                    });
+              } else if (settings.gridCrossAxisCount == 1 && _itemScrollController.isAttached) {
+                _itemScrollController.jumpTo(index: index);
+                Future.delayed(const Duration(milliseconds: 400), () {
+                  if (mounted) setState(() => _restoringPosition = false);
+                });
+              } else {
+                setState(() => _restoringPosition = false);
+              }
+            } catch (e) {
+              log('フォールバックスクロール位置復元エラー: $e');
+              if (mounted) setState(() => _restoringPosition = false);
+            }
+          }
+        }
+      } else {
+        // 最新画像パスがない場合は従来の方式でフォールバック
+        final index = settings.lastScrollIndex;
+        if (index > 0 && index < _displayItems.length) {
+          try {
+            setState(() => _restoringPosition = true);
+            if (settings.gridCrossAxisCount > 1 && _autoScrollController.hasClients) {
+              final rowIndex = (index / settings.gridCrossAxisCount).floor();
+              _autoScrollController
+                  .scrollToIndex(rowIndex, preferPosition: AutoScrollPosition.begin)
+                  .whenComplete(() {
+                    if (mounted) {
+                      setState(() => _restoringPosition = false);
+                    }
+                  });
+            } else if (settings.gridCrossAxisCount == 1 && _itemScrollController.isAttached) {
+              _itemScrollController.jumpTo(index: index);
+              Future.delayed(const Duration(milliseconds: 400), () {
+                if (mounted) setState(() => _restoringPosition = false);
+              });
+            } else {
+              setState(() => _restoringPosition = false);
+            }
+          } catch (e) {
+            log('スクロール位置復元エラー: $e');
+            if (mounted) setState(() => _restoringPosition = false);
+          }
         }
       }
     });
