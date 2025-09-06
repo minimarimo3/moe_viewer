@@ -5,6 +5,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import '../../../common_widgets/asset_thumbnail.dart';
 import '../../../common_widgets/file_thumbnail.dart';
 import '../../detail/detail_screen.dart';
@@ -18,6 +19,7 @@ class GalleryGridWidget extends StatefulWidget {
   final VoidCallback? onEnterDetail;
   final void Function(int index, dynamic item)? onItemTap;
   final VoidCallback? onScrollToEnd; // 遅延読み込み用コールバック
+  final void Function(int index)? onItemVisible; // 可視アイテム通知（精度向上用）
 
   const GalleryGridWidget({
     super.key,
@@ -29,6 +31,7 @@ class GalleryGridWidget extends StatefulWidget {
     this.onEnterDetail,
     this.onItemTap,
     this.onScrollToEnd,
+    this.onItemVisible,
   });
 
   @override
@@ -50,13 +53,13 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
       final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
       final image = frame.image;
-      
+
       final aspectRatio = image.width / image.height;
       _aspectRatioCache[cacheKey] = aspectRatio;
-      
+
       image.dispose();
       codec.dispose();
-      
+
       return aspectRatio;
     } catch (e) {
       // エラーの場合はデフォルト比率を返す
@@ -67,8 +70,10 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final itemWidth = (screenWidth - (widget.crossAxisCount + 1) * 2) / widget.crossAxisCount;
-    final thumbnailSize = (itemWidth * MediaQuery.of(context).devicePixelRatio).round();
+    final itemWidth =
+        (screenWidth - (widget.crossAxisCount + 1) * 2) / widget.crossAxisCount;
+    final thumbnailSize = (itemWidth * MediaQuery.of(context).devicePixelRatio)
+        .round();
 
     return NotificationListener<ScrollNotification>(
       onNotification: (ScrollNotification scrollInfo) {
@@ -82,37 +87,51 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
       },
       child: CustomScrollView(
         controller: widget.autoScrollController,
+        physics: const ClampingScrollPhysics(),
         slivers: [
-          SliverToBoxAdapter(
-            child: _buildAspectRatioPreservedGrid(itemWidth, thumbnailSize),
+          // 直接SliverMasonryGridを使い、スクロール座標系と一致させる
+          SliverMasonryGrid.count(
+            crossAxisCount: widget.crossAxisCount,
+            crossAxisSpacing: 2.0,
+            mainAxisSpacing: 2.0,
+            childCount: widget.displayItems.length,
+            itemBuilder: (context, index) {
+              final item = widget.displayItems[index];
+              // アイテム単位でAutoScrollTagを付与して精度を上げる
+              return AutoScrollTag(
+                key: ValueKey('auto_scroll_item_$index'),
+                controller: widget.autoScrollController,
+                index: index,
+                highlightColor: Colors.transparent,
+                child: VisibilityDetector(
+                  key: ValueKey('vis_$index'),
+                  onVisibilityChanged: (info) {
+                    // 一定以上見えているもののみ採用（50%以上）
+                    if (info.visibleFraction >= 0.5) {
+                      widget.onItemVisible?.call(index);
+                    }
+                  },
+                  child: _buildFlexibleThumbnail(
+                    item,
+                    index,
+                    itemWidth,
+                    thumbnailSize,
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAspectRatioPreservedGrid(double itemWidth, int thumbnailSize) {
-    return MasonryGridView.count(
-      crossAxisCount: widget.crossAxisCount,
-      crossAxisSpacing: 2.0,
-      mainAxisSpacing: 2.0,
-      itemCount: widget.displayItems.length,
-      physics: const NeverScrollableScrollPhysics(),
-      shrinkWrap: true,
-      itemBuilder: (context, index) {
-        final item = widget.displayItems[index];
-        // AutoScrollTagでラップして、スクロール位置追跡を可能にする
-        return AutoScrollTag(
-          key: ValueKey('auto_scroll_$index'),
-          controller: widget.autoScrollController,
-          index: index,
-          child: _buildFlexibleThumbnail(item, index, itemWidth, thumbnailSize),
-        );
-      },
-    );
-  }
-
-  Widget _buildFlexibleThumbnail(dynamic item, int index, double maxItemWidth, int thumbnailSize) {
+  Widget _buildFlexibleThumbnail(
+    dynamic item,
+    int index,
+    double maxItemWidth,
+    int thumbnailSize,
+  ) {
     Widget thumbnailWidget;
     if (item is AssetEntity) {
       thumbnailWidget = AssetThumbnail(
@@ -162,15 +181,16 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
     );
   }
 
-  Widget _buildAspectRatioWidget(dynamic item, Widget thumbnailWidget, double maxItemWidth) {
+  Widget _buildAspectRatioWidget(
+    dynamic item,
+    Widget thumbnailWidget,
+    double maxItemWidth,
+  ) {
     if (item is AssetEntity) {
       // AssetEntityの場合、実際のアスペクト比を使用
       if (item.height > 0) {
         final aspectRatio = item.width / item.height;
-        return AspectRatio(
-          aspectRatio: aspectRatio,
-          child: thumbnailWidget,
-        );
+        return AspectRatio(aspectRatio: aspectRatio, child: thumbnailWidget);
       }
     } else if (item is File) {
       // Fileの場合、FutureBuilderでアスペクト比を取得
@@ -201,11 +221,8 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
         },
       );
     }
-    
+
     // デフォルトケース
-    return AspectRatio(
-      aspectRatio: 1.0,
-      child: thumbnailWidget,
-    );
+    return AspectRatio(aspectRatio: 1.0, child: thumbnailWidget);
   }
 }

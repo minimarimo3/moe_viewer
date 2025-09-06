@@ -119,7 +119,8 @@ class SettingsProvider extends ChangeNotifier {
     _themeMode = await _settingsRepository.loadThemeMode();
     _lastScrollIndex = await _settingsRepository.loadLastScrollIndex();
     try {
-      _lastViewedImagePath = await _settingsRepository.loadLastViewedImagePath();
+      _lastViewedImagePath = await _settingsRepository
+          .loadLastViewedImagePath();
     } catch (e) {
       _lastViewedImagePath = null;
     }

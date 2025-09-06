@@ -49,13 +49,13 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
       final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
       final image = frame.image;
-      
+
       final aspectRatio = image.width / image.height;
       _aspectRatioCache[cacheKey] = aspectRatio;
-      
+
       image.dispose();
       codec.dispose();
-      
+
       return aspectRatio;
     } catch (e) {
       // エラーの場合はデフォルト比率を返す
@@ -66,8 +66,10 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final itemWidth = (screenWidth - (widget.crossAxisCount + 1) * 2) / widget.crossAxisCount;
-    final thumbnailSize = (itemWidth * MediaQuery.of(context).devicePixelRatio).round();
+    final itemWidth =
+        (screenWidth - (widget.crossAxisCount + 1) * 2) / widget.crossAxisCount;
+    final thumbnailSize = (itemWidth * MediaQuery.of(context).devicePixelRatio)
+        .round();
 
     return NotificationListener<ScrollNotification>(
       onNotification: (ScrollNotification scrollInfo) {
@@ -100,8 +102,11 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
 
   Widget _buildRow(int rowIndex, double itemWidth, int thumbnailSize) {
     final startIndex = rowIndex * widget.crossAxisCount;
-    final endIndex = (startIndex + widget.crossAxisCount).clamp(0, widget.displayItems.length);
-    
+    final endIndex = (startIndex + widget.crossAxisCount).clamp(
+      0,
+      widget.displayItems.length,
+    );
+
     return FutureBuilder<List<Widget>>(
       future: _buildRowItems(startIndex, endIndex, itemWidth, thumbnailSize),
       builder: (context, snapshot) {
@@ -114,7 +119,7 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
             ),
           );
         }
-        
+
         // ローディング中
         return SizedBox(
           height: itemWidth, // 仮の高さ
@@ -141,24 +146,39 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
     );
   }
 
-  Future<List<Widget>> _buildRowItems(int startIndex, int endIndex, double itemWidth, int thumbnailSize) async {
+  Future<List<Widget>> _buildRowItems(
+    int startIndex,
+    int endIndex,
+    double itemWidth,
+    int thumbnailSize,
+  ) async {
     final List<Widget> items = [];
-    
+
     for (int i = startIndex; i < endIndex; i++) {
       final item = widget.displayItems[i];
-      final widget_ = await _buildThumbnailWithAspectRatio(item, i, thumbnailSize, itemWidth);
+      final widget_ = await _buildThumbnailWithAspectRatio(
+        item,
+        i,
+        thumbnailSize,
+        itemWidth,
+      );
       items.add(Expanded(child: widget_));
     }
-    
+
     // 最後の行で足りない分は空のWidgetで埋める
     while (items.length < widget.crossAxisCount) {
       items.add(Expanded(child: Container()));
     }
-    
+
     return items;
   }
 
-  Future<Widget> _buildThumbnailWithAspectRatio(dynamic item, int index, int thumbnailSize, double itemWidth) async {
+  Future<Widget> _buildThumbnailWithAspectRatio(
+    dynamic item,
+    int index,
+    int thumbnailSize,
+    double itemWidth,
+  ) async {
     double aspectRatio = 0.75; // デフォルト値
 
     if (item is AssetEntity) {
@@ -218,9 +238,7 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
           height: itemHeight,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(4.0),
-            child: RepaintBoundary(
-              child: thumbnailWidget,
-            ),
+            child: RepaintBoundary(child: thumbnailWidget),
           ),
         ),
       ),

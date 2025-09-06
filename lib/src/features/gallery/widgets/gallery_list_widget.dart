@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import '../../detail/detail_screen.dart';
 
 class GalleryListWidget extends StatelessWidget {
@@ -14,6 +15,7 @@ class GalleryListWidget extends StatelessWidget {
   final Map<String, Future<Size>> imageSizeFutureCache;
   final VoidCallback? onEnterDetail;
   final VoidCallback? onScrollToEnd; // 遅延読み込み用コールバック
+  final void Function(int index)? onItemVisible; // 可視アイテム通知（精度向上用）
 
   const GalleryListWidget({
     super.key,
@@ -25,27 +27,23 @@ class GalleryListWidget extends StatelessWidget {
     required this.imageSizeFutureCache,
     this.onEnterDetail,
     this.onScrollToEnd,
+    this.onItemVisible,
   });
 
   Future<Size> getImageSize(File imageFile) {
     return imageSizeFutureCache.putIfAbsent(imageFile.path, () async {
       try {
-        // ファイルサイズが大きい場合は軽量化した読み込みを行う
         final fileStat = await imageFile.stat();
         if (fileStat.size > 10 * 1024 * 1024) {
-          // 10MB以上の場合
-          // 大きなファイルの場合はデフォルトアスペクト比を使用
-          return const Size(16, 9); // 16:9のデフォルト比率
+          return const Size(16, 9);
         }
-
         final bytes = await imageFile.readAsBytes();
         final image = await decodeImageFromList(bytes);
         final size = Size(image.width.toDouble(), image.height.toDouble());
-        image.dispose(); // メモリリークを防ぐ
+        image.dispose();
         return size;
       } catch (e) {
-        // エラーが発生した場合はデフォルトサイズを返す
-        return const Size(4, 3); // 4:3のデフォルト比率
+        return const Size(4, 3);
       }
     });
   }
@@ -56,11 +54,7 @@ class GalleryListWidget extends StatelessWidget {
       return AspectRatio(
         aspectRatio: aspectRatio,
         child: RepaintBoundary(
-          child: AssetEntityImage(
-            item,
-            isOriginal: true, // 高画質を維持
-            fit: BoxFit.cover,
-          ),
+          child: AssetEntityImage(item, isOriginal: true, fit: BoxFit.cover),
         ),
       );
     } else if (item is File) {
@@ -73,12 +67,11 @@ class GalleryListWidget extends StatelessWidget {
             final size = snapshot.data!;
             final double aspectRatio = size.width / size.height;
             return AspectRatio(
-              aspectRatio: aspectRatio.clamp(0.1, 10.0), // 極端なアスペクト比を制限
+              aspectRatio: aspectRatio.clamp(0.1, 10.0),
               child: RepaintBoundary(
                 child: Image.file(
                   item,
                   fit: BoxFit.cover,
-                  // cacheWidthを削除して高画質を維持
                   errorBuilder: (context, error, stackTrace) {
                     return Container(
                       height: 200,
@@ -119,9 +112,8 @@ class GalleryListWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return NotificationListener<ScrollNotification>(
       onNotification: (ScrollNotification scrollInfo) {
-        // スクロールが最下部に近づいた時に追加読み込みを実行
         if (onScrollToEnd != null &&
-            scrollInfo.metrics.extentAfter < 500 && // 500px手前で読み込み開始
+            scrollInfo.metrics.extentAfter < 500 &&
             scrollInfo is ScrollUpdateNotification) {
           onScrollToEnd!();
         }
@@ -131,36 +123,43 @@ class GalleryListWidget extends StatelessWidget {
         itemScrollController: itemScrollController,
         itemPositionsListener: itemPositionsListener,
         itemCount: displayItems.length,
-        addAutomaticKeepAlives: true, // ビューポート外のアイテムをキャッシュして滑らかなスクロール
-        addRepaintBoundaries: false, // RepaintBoundaryを手動で制御
+        addAutomaticKeepAlives: true,
+        addRepaintBoundaries: false,
         itemBuilder: (context, index) {
           final item = displayItems[index];
           return RepaintBoundary(
-            // アイテム全体をRepaintBoundaryで囲む
-            child: GestureDetector(
-              onTap: () {
-                onEnterDetail?.call();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => DetailScreen(
-                      imageFileList: imageFilesForDetail,
-                      initialIndex: index,
+            child: VisibilityDetector(
+              key: ValueKey('vis_list_$index'),
+              onVisibilityChanged: (info) {
+                if (info.visibleFraction >= 0.5) {
+                  onItemVisible?.call(index);
+                }
+              },
+              child: GestureDetector(
+                onTap: () {
+                  onEnterDetail?.call();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DetailScreen(
+                        imageFileList: imageFilesForDetail,
+                        initialIndex: index,
+                      ),
                     ),
+                  );
+                },
+                onLongPressStart: (details) {
+                  onLongPress(item, details.globalPosition);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 4.0,
+                    horizontal: 8.0,
                   ),
-                );
-              },
-              onLongPressStart: (details) {
-                onLongPress(item, details.globalPosition);
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 4.0,
-                  horizontal: 8.0,
-                ),
-                child: Hero(
-                  tag: 'imageHero_$index',
-                  child: buildFullAspectRatioImage(item, index),
+                  child: Hero(
+                    tag: 'imageHero_$index',
+                    child: buildFullAspectRatioImage(item, index),
+                  ),
                 ),
               ),
             ),

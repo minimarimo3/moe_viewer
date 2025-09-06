@@ -90,7 +90,12 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   void initState() {
     super.initState();
 
-    _autoScrollController = AutoScrollController();
+    _autoScrollController = AutoScrollController(
+      viewportBoundaryGetter: () =>
+          Rect.fromLTRB(0, 0, 0, MediaQuery.of(context).size.height),
+      axis: Axis.vertical,
+      suggestedRowHeight: 200.0, // 推定行高を設定してスクロール精度を改善
+    );
 
     _appBarAnimationController = AnimationController(
       vsync: this,
@@ -131,15 +136,18 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
       // 現在表示されている最新の画像パスを保存
       String? currentImagePath;
-      
+
       if (settings.gridCrossAxisCount > 1) {
         // グリッド表示の場合
         if (_autoScrollController.hasClients && _displayItems.isNotEmpty) {
           final screenWidth = MediaQuery.of(context).size.width;
           final itemSize = screenWidth / settings.gridCrossAxisCount;
           final rowIndex = (_autoScrollController.offset / itemSize).floor();
-          final itemIndex = (rowIndex * settings.gridCrossAxisCount).clamp(0, _displayItems.length - 1);
-          
+          final itemIndex = (rowIndex * settings.gridCrossAxisCount).clamp(
+            0,
+            _displayItems.length - 1,
+          );
+
           if (itemIndex < _imageFilesForDetail.length) {
             currentImagePath = _imageFilesForDetail[itemIndex].path;
           }
@@ -148,18 +156,34 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         // 1列表示の場合
         final positions = _itemPositionsListener.itemPositions.value;
         if (positions.isNotEmpty && _imageFilesForDetail.isNotEmpty) {
-          final visibleIndex = positions.where((pos) => pos.itemLeadingEdge < 1).last.index;
+          final visibleIndex = positions
+              .where((pos) => pos.itemLeadingEdge < 1)
+              .last
+              .index;
           if (visibleIndex < _imageFilesForDetail.length) {
             currentImagePath = _imageFilesForDetail[visibleIndex].path;
           }
         }
       }
-      
+
       // 最新の画像パスが変化した場合のみ更新
-      if (currentImagePath != null && currentImagePath != settings.lastViewedImagePath) {
+      if (currentImagePath != null &&
+          currentImagePath != settings.lastViewedImagePath) {
         settings.setLastViewedImagePath(currentImagePath);
       }
     });
+  }
+
+  // 可視アイテム通知を受けて最後に見た画像パスを正確に保存
+  void _onItemVisible(int index) {
+    if (index < 0 || index >= _imageFilesForDetail.length) return;
+    final path = _imageFilesForDetail[index].path;
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    if (path != settings.lastViewedImagePath) {
+      settings.setLastViewedImagePath(path);
+      // 互換のためインデックスもしおりとして併用
+      settings.setLastScrollIndex(index);
+    }
   }
 
   Future<void> _loadImages() async {
@@ -243,9 +267,9 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   }
 
   void _restoreScrollPositionAsync(SettingsProvider settings) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      
+
       final lastImagePath = settings.lastViewedImagePath;
       if (lastImagePath != null && _imageFilesForDetail.isNotEmpty) {
         // 最新の画像パスから対応するインデックスを検索
@@ -256,23 +280,29 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
             break;
           }
         }
-        
+
         // 対象の画像が見つかった場合、その位置にスクロール
         if (targetIndex >= 0 && targetIndex < _displayItems.length) {
           try {
             setState(() => _restoringPosition = true);
-            
-            if (settings.gridCrossAxisCount > 1 && _autoScrollController.hasClients) {
-              // グリッド表示の場合：行インデックスに変換してスクロール
-              final rowIndex = (targetIndex / settings.gridCrossAxisCount).floor();
-              _autoScrollController
-                  .scrollToIndex(rowIndex, preferPosition: AutoScrollPosition.begin)
-                  .whenComplete(() {
-                    if (mounted) {
-                      setState(() => _restoringPosition = false);
-                    }
-                  });
-            } else if (settings.gridCrossAxisCount == 1 && _itemScrollController.isAttached) {
+
+            if (settings.gridCrossAxisCount > 1 &&
+                _autoScrollController.hasClients) {
+              // グリッド表示の場合：アイテム単位でスクロール（AutoScrollTagをアイテムに付与）
+              await _autoScrollController.scrollToIndex(
+                targetIndex,
+                preferPosition: AutoScrollPosition.begin,
+                duration: const Duration(milliseconds: 600),
+              );
+
+              // スクロール完了後、微調整のために少し待機
+              await Future.delayed(const Duration(milliseconds: 200));
+
+              if (mounted) {
+                setState(() => _restoringPosition = false);
+              }
+            } else if (settings.gridCrossAxisCount == 1 &&
+                _itemScrollController.isAttached) {
               // リスト表示の場合：直接インデックスにジャンプ
               _itemScrollController.jumpTo(index: targetIndex);
               // 少し待ってから解除（ジャンプは同期なので視覚的な余裕を持たせる）
@@ -292,16 +322,21 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
           if (index > 0 && index < _displayItems.length) {
             try {
               setState(() => _restoringPosition = true);
-              if (settings.gridCrossAxisCount > 1 && _autoScrollController.hasClients) {
-                final rowIndex = (index / settings.gridCrossAxisCount).floor();
-                _autoScrollController
-                    .scrollToIndex(rowIndex, preferPosition: AutoScrollPosition.begin)
-                    .whenComplete(() {
-                      if (mounted) {
-                        setState(() => _restoringPosition = false);
-                      }
-                    });
-              } else if (settings.gridCrossAxisCount == 1 && _itemScrollController.isAttached) {
+              if (settings.gridCrossAxisCount > 1 &&
+                  _autoScrollController.hasClients) {
+                await _autoScrollController.scrollToIndex(
+                  index,
+                  preferPosition: AutoScrollPosition.begin,
+                  duration: const Duration(milliseconds: 600),
+                );
+
+                await Future.delayed(const Duration(milliseconds: 200));
+
+                if (mounted) {
+                  setState(() => _restoringPosition = false);
+                }
+              } else if (settings.gridCrossAxisCount == 1 &&
+                  _itemScrollController.isAttached) {
                 _itemScrollController.jumpTo(index: index);
                 Future.delayed(const Duration(milliseconds: 400), () {
                   if (mounted) setState(() => _restoringPosition = false);
@@ -321,16 +356,21 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         if (index > 0 && index < _displayItems.length) {
           try {
             setState(() => _restoringPosition = true);
-            if (settings.gridCrossAxisCount > 1 && _autoScrollController.hasClients) {
-              final rowIndex = (index / settings.gridCrossAxisCount).floor();
-              _autoScrollController
-                  .scrollToIndex(rowIndex, preferPosition: AutoScrollPosition.begin)
-                  .whenComplete(() {
-                    if (mounted) {
-                      setState(() => _restoringPosition = false);
-                    }
-                  });
-            } else if (settings.gridCrossAxisCount == 1 && _itemScrollController.isAttached) {
+            if (settings.gridCrossAxisCount > 1 &&
+                _autoScrollController.hasClients) {
+              await _autoScrollController.scrollToIndex(
+                index,
+                preferPosition: AutoScrollPosition.begin,
+                duration: const Duration(milliseconds: 600),
+              );
+
+              await Future.delayed(const Duration(milliseconds: 200));
+
+              if (mounted) {
+                setState(() => _restoringPosition = false);
+              }
+            } else if (settings.gridCrossAxisCount == 1 &&
+                _itemScrollController.isAttached) {
               _itemScrollController.jumpTo(index: index);
               Future.delayed(const Duration(milliseconds: 400), () {
                 if (mounted) setState(() => _restoringPosition = false);
@@ -432,6 +472,24 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                         onLongPress: _handleLongPress,
                         imageSizeFutureCache: _imageSizeFutureCache,
                         onScrollToEnd: _loadMoreImages, // 遅延読み込み追加
+                        onItemVisible: (i) {
+                          // フィルタや検索が効いている場合は、見かけのindexから元のindexへ逆マップ
+                          final hasActiveFilter = _isFilterActive;
+                          final hasQuery =
+                              _isSearchMode &&
+                              _searchController.text.trim().isNotEmpty;
+                          int originalIndex = i;
+                          if (hasActiveFilter) {
+                            if (i >= 0 && i < _activeFilterIndices.length) {
+                              originalIndex = _activeFilterIndices[i];
+                            }
+                          } else if (hasQuery) {
+                            if (i >= 0 && i < _filteredDetailIndices.length) {
+                              originalIndex = _filteredDetailIndices[i];
+                            }
+                          }
+                          _onItemVisible(originalIndex);
+                        },
                       )
                     : GalleryGridWidget(
                         displayItems: effectiveDisplayItems,
@@ -441,6 +499,24 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                         onLongPress: _handleLongPress,
                         onEnterDetail: () => _exitSearchMode(resetInput: false),
                         onScrollToEnd: _loadMoreImages, // 遅延読み込み追加
+                        onItemVisible: (i) {
+                          // グリッドも同様に逆マップ
+                          final hasActiveFilter = _isFilterActive;
+                          final hasQuery =
+                              _isSearchMode &&
+                              _searchController.text.trim().isNotEmpty;
+                          int originalIndex = i;
+                          if (hasActiveFilter) {
+                            if (i >= 0 && i < _activeFilterIndices.length) {
+                              originalIndex = _activeFilterIndices[i];
+                            }
+                          } else if (hasQuery) {
+                            if (i >= 0 && i < _filteredDetailIndices.length) {
+                              originalIndex = _filteredDetailIndices[i];
+                            }
+                          }
+                          _onItemVisible(originalIndex);
+                        },
                       ),
               ),
 

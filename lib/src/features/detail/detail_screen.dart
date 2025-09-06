@@ -618,7 +618,7 @@ class _DetailScreenState extends State<DetailScreen>
       final settings = Provider.of<SettingsProvider>(context, listen: false);
       settings.setLastViewedImagePath(currentImagePath);
     }
-    
+
     _pageController.dispose();
     // ★★★ この画面を離れるときに、必ずシステムUIを元に戻す
     _animationController.dispose(); // ★★★ disposeを追加
@@ -770,11 +770,14 @@ class _DetailScreenState extends State<DetailScreen>
               });
               _saveCurrentState();
               _precacheAdjacentImages(index);
-              
+
               // 最新の画像パスを保存（オートスクロール機能のため）
               if (index < widget.imageFileList.length) {
                 final currentImagePath = widget.imageFileList[index].path;
-                final settings = Provider.of<SettingsProvider>(context, listen: false);
+                final settings = Provider.of<SettingsProvider>(
+                  context,
+                  listen: false,
+                );
                 settings.setLastViewedImagePath(currentImagePath);
               }
             },
