@@ -43,6 +43,22 @@ void _aiIsolateEntry(IsolateInitMessage initMessage) async {
       final modelPath = '${directory.path}/${initMessage.modelFileName}';
       final labelPath = '${directory.path}/${initMessage.labelFileName}';
 
+      // ファイル存在確認
+      final modelFile = File(modelPath);
+      final labelFile = File(labelPath);
+
+      log('AI Isolate: Checking file existence...');
+      log('AI Isolate: Model file exists: ${await modelFile.exists()}');
+      log('AI Isolate: Label file exists: ${await labelFile.exists()}');
+
+      if (!await modelFile.exists() || !await labelFile.exists()) {
+        log('AI Isolate: Required files not found, skipping model load');
+        mainSendPort.send('ready'); // ファイルが無くても ready を送信
+        return;
+      }
+
+      log('AI Isolate: Files verified, starting model load...');
+
       // ランナー選択（拡張容易なディスパッチ）
       runner = _selectRunner(initMessage.modelId, modelPath);
       await runner.load(
@@ -55,6 +71,8 @@ void _aiIsolateEntry(IsolateInitMessage initMessage) async {
     } catch (e) {
       log('AI Isolate: Failed to load model or labels: $e');
     }
+  } else {
+    log('AI Isolate: No model specified, ready without loading');
   }
 
   mainSendPort.send('ready'); // 準備完了をメインスレッドに通知
@@ -1033,6 +1051,24 @@ class AiService {
     }
 
     log('Switching model to: ${modelDef.displayName}');
+
+    // ファイルの存在と整合性を再確認
+    final directory = await getApplicationSupportDirectory();
+    final modelPath = '${directory.path}/${modelDef.modelFileName}';
+    final labelPath = '${directory.path}/${modelDef.labelFileName}';
+
+    final modelFile = File(modelPath);
+    final labelFile = File(labelPath);
+
+    if (!await modelFile.exists() || !await labelFile.exists()) {
+      log(
+        'Model or label files not found. Model: ${await modelFile.exists()}, Label: ${await labelFile.exists()}',
+      );
+      throw Exception('モデルファイルまたはラベルファイルが見つかりません。');
+    }
+
+    log('Model files confirmed to exist. Starting model loading...');
+
     // 既存のIsolateがあれば、まず安全に終了させる
     dispose();
 

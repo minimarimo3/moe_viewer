@@ -275,20 +275,28 @@ class SettingsProvider extends ChangeNotifier {
 
     if (await modelFile.exists() && await labelsFile.exists()) {
       // ★★★ ファイルが存在する場合、ハッシュ値を検証 ★★★
+      log(
+        "ファイルのハッシュ値を計算中です。モデル: ${modelDef.modelFileName}, ラベル: ${modelDef.labelFileName}",
+      );
+
       final modelHashFuture = computeFileHash(modelPath);
       final labelsHashFuture = computeFileHash(labelsPath);
 
       // 両方の計算が終わるのを待つ
+      log("ハッシュ値計算を開始しました。計算完了まで待機します...");
       final results = await Future.wait([modelHashFuture, labelsHashFuture]);
       final modelHash = results[0];
       final labelsHash = results[1];
 
+      log("ハッシュ値計算が完了しました。");
       log("モデルファイルのハッシュ: $modelHash, 期待されるハッシュ: ${modelDef.modelFileHash}");
       log("ラベルファイルのハッシュ: $labelsHash, 期待されるハッシュ: ${modelDef.labelFileHash}");
+
       if (modelHash == modelDef.modelFileHash &&
           labelsHash == modelDef.labelFileHash) {
         _isModelDownloaded = true;
         _isModelCorrupted = false;
+        log("ファイルの整合性チェックが成功しました。");
       } else {
         _isModelDownloaded = true;
         _isModelCorrupted = true;
@@ -300,6 +308,7 @@ class SettingsProvider extends ChangeNotifier {
     } else {
       _isModelDownloaded = false;
       _isModelCorrupted = false;
+      log("モデルファイルまたはラベルファイルが見つかりません。");
     }
     _isCheckingHash = false;
     notifyListeners();
@@ -444,10 +453,8 @@ class SettingsProvider extends ChangeNotifier {
     _isAnalyzing = true;
     notifyListeners();
 
-    // 解析開始時にモデルをAiServiceに切り替え（ロード）
-    await aiService.switchModel(selectedModelDef);
-
-    // モデルの整合性をチェック
+    // まず最初にモデルの整合性をチェック（ハッシュ値計算を完了させる）
+    log("ファイルの整合性をチェックしています...");
     await checkModelStatus(selectedModelDef);
     if (!_isModelDownloaded || _isModelCorrupted) {
       log("モデルが利用可能ではありません。ダウンロードまたは修復してください。");
@@ -457,6 +464,8 @@ class SettingsProvider extends ChangeNotifier {
       return;
     }
 
+    // ハッシュチェックが成功してからモデルをロード
+    log("ファイルの整合性チェックが完了しました。モデルをロードしています...");
     await aiService.ensureModelLoaded(selectedModelDef);
     await updateOverallProgress();
     notifyListeners();
