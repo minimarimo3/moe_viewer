@@ -246,6 +246,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
 
               ListTile(
+                leading: const Icon(Icons.play_circle_outline),
+                title: Text(
+                  '画像自動スクロール間隔 (${(settings.autoScrollInterval / 10).toStringAsFixed(1)}秒)',
+                ),
+                subtitle: Slider(
+                  value: settings.autoScrollInterval.toDouble(),
+                  min: 5, // 0.5秒
+                  max: 100, // 10秒
+                  divisions: 95,
+                  label:
+                      '${(settings.autoScrollInterval / 10).toStringAsFixed(1)}秒',
+                  onChanged: (double value) {
+                    settings.setAutoScrollInterval(value.toInt());
+                  },
+                ),
+              ),
+
+              ListTile(
                 leading: const Icon(Icons.grid_view_outlined),
                 title: Text('一覧の列数 (${settings.gridCrossAxisCount})'),
                 subtitle: Slider(

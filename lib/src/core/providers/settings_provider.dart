@@ -115,6 +115,10 @@ class SettingsProvider extends ChangeNotifier {
   bool _ratingSettingsChanged = false;
   bool get ratingSettingsChanged => _ratingSettingsChanged;
 
+  // 画像自動スクロール設定（1/10秒単位、デフォルト30 = 3秒）
+  int _autoScrollInterval = 30;
+  int get autoScrollInterval => _autoScrollInterval;
+
   /// ファイル破損チェック
   bool _isModelCorrupted = false;
   bool get isModelCorrupted => _isModelCorrupted;
@@ -150,6 +154,12 @@ class SettingsProvider extends ChangeNotifier {
           .loadGridScrollPreferPosition();
     } catch (_) {
       _gridScrollPreferPosition = 'middle';
+    }
+    // 自動スクロール間隔設定
+    try {
+      _autoScrollInterval = await _settingsRepository.loadAutoScrollInterval();
+    } catch (_) {
+      _autoScrollInterval = 30; // デフォルト3秒
     }
 
     // UIをすぐに更新
@@ -235,6 +245,13 @@ class SettingsProvider extends ChangeNotifier {
     _gridScrollPreferPosition = positionName;
     await _settingsRepository.saveGridScrollPreferPosition(positionName);
     // UIは変えないが、他参照箇所に反映されるよう通知
+    notifyListeners();
+  }
+
+  Future<void> setAutoScrollInterval(int interval) async {
+    if (interval < 1) return; // 最小値制限
+    _autoScrollInterval = interval;
+    await _settingsRepository.saveAutoScrollInterval(interval);
     notifyListeners();
   }
 

@@ -55,6 +55,11 @@ class _DetailScreenState extends State<DetailScreen>
   static const double _verticalSwipeDistanceThreshold = 80.0; // px
   static const double _verticalSwipeVelocityThreshold = 500.0; // px/s
 
+  // 自動スクロール機能関連
+  Timer? _autoScrollTimer;
+  bool _isAutoScrollActive = false;
+  DateTime? _lastUserInteractionTime;
+
   final GlobalKey<PieMenuWidgetState> _pieMenuKey =
       GlobalKey<PieMenuWidgetState>();
 
@@ -724,6 +729,65 @@ class _DetailScreenState extends State<DetailScreen>
     await prefs.setInt('lastViewedIndex', _currentIndex); // 現在のインデックス
   }
 
+  // 自動スクロール機能
+  void _startAutoScroll() {
+    _stopAutoScroll();
+    _isAutoScrollActive = true;
+    _lastUserInteractionTime = null;
+    _scheduleNextAutoScroll();
+  }
+
+  void _stopAutoScroll() {
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = null;
+    _isAutoScrollActive = false;
+    _lastUserInteractionTime = null;
+  }
+
+  void _scheduleNextAutoScroll() {
+    if (!_isAutoScrollActive || !mounted) return;
+
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final intervalMs = (settings.autoScrollInterval * 100)
+        .toInt(); // 1/10秒単位をミリ秒に変換
+
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = Timer(Duration(milliseconds: intervalMs), () {
+      if (!mounted || !_isAutoScrollActive) return;
+
+      // ユーザー操作後3秒待機
+      if (_lastUserInteractionTime != null &&
+          DateTime.now().difference(_lastUserInteractionTime!).inSeconds < 3) {
+        _scheduleNextAutoScroll(); // 再スケジュール
+        return;
+      }
+
+      _goToNextImage();
+      _scheduleNextAutoScroll(); // 次のスクロールをスケジュール
+    });
+  }
+
+  void _goToNextImage() {
+    if (!mounted) return;
+
+    int nextIndex = _currentIndex + 1;
+    if (nextIndex >= widget.imageFileList.length) {
+      nextIndex = 0; // 最初の画像に戻る（循環）
+    }
+
+    _pageController.animateToPage(
+      nextIndex,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _onUserInteraction() {
+    if (_isAutoScrollActive) {
+      _lastUserInteractionTime = DateTime.now();
+    }
+  }
+
   @override
   void dispose() {
     // 最新の画像パスを確実に保存
@@ -733,6 +797,7 @@ class _DetailScreenState extends State<DetailScreen>
       _settings?.setLastViewedImagePath(currentImagePath);
     }
 
+    _autoScrollTimer?.cancel(); // 自動スクロールタイマーをキャンセル
     _pageController.dispose();
     // ★★★ この画面を離れるときに、必ずシステムUIを元に戻す
     _animationController.dispose(); // ★★★ disposeを追加
@@ -795,6 +860,21 @@ class _DetailScreenState extends State<DetailScreen>
                 backgroundColor: Colors.grey,
                 actions: [
                   IconButton(
+                    icon: Icon(
+                      _isAutoScrollActive
+                          ? Icons.pause_circle_outline
+                          : Icons.play_circle_outline,
+                    ),
+                    onPressed: () {
+                      if (_isAutoScrollActive) {
+                        _stopAutoScroll();
+                      } else {
+                        _startAutoScroll();
+                      }
+                      setState(() {}); // UIを更新
+                    },
+                  ),
+                  IconButton(
                     icon: const Icon(Icons.share_outlined),
                     onPressed: () {
                       final currentImage = widget.imageFileList[_currentIndex];
@@ -828,27 +908,37 @@ class _DetailScreenState extends State<DetailScreen>
         extendBodyBehindAppBar: true,
         // ★★★ 画面全体をGestureDetectorで囲んでタップを検知
         body: GestureDetector(
-          onTap: _toggleUiVisibility,
-          onDoubleTapDown: _onDoubleTap,
+          onTap: () {
+            _onUserInteraction();
+            _toggleUiVisibility();
+          },
+          onDoubleTapDown: (details) {
+            _onUserInteraction();
+            _onDoubleTap(details);
+          },
           onLongPressStart: (details) {
+            _onUserInteraction();
             _handleLongPress(details.globalPosition);
           },
           // 縦スワイプで戻る動作を実装（ページング有効時のみハンドラを登録して、
           // ズーム中にInteractiveViewerのジェスチャーが奪われないようにする）
           onVerticalDragStart: _isPagingEnabled
               ? (DragStartDetails details) {
+                  _onUserInteraction();
                   _verticalDragStartY = details.globalPosition.dy;
                   _verticalDragCurrentY = _verticalDragStartY;
                 }
               : null,
           onVerticalDragUpdate: _isPagingEnabled
               ? (DragUpdateDetails details) {
+                  _onUserInteraction();
                   if (_verticalDragStartY == null) return;
                   _verticalDragCurrentY = details.globalPosition.dy;
                 }
               : null,
           onVerticalDragEnd: _isPagingEnabled
               ? (DragEndDetails details) {
+                  _onUserInteraction();
                   if (_verticalDragStartY == null ||
                       _verticalDragCurrentY == null) {
                     _verticalDragStartY = null;
@@ -885,6 +975,9 @@ class _DetailScreenState extends State<DetailScreen>
               _saveCurrentState();
               _precacheAdjacentImages(index);
 
+              // ユーザー操作として記録
+              _onUserInteraction();
+
               // 最新の画像パスを保存（オートスクロール機能のため）
               if (index < widget.imageFileList.length) {
                 final currentImagePath = widget.imageFileList[index].path;
@@ -900,7 +993,11 @@ class _DetailScreenState extends State<DetailScreen>
               final file = widget.imageFileList[index];
               return InteractiveViewer(
                 transformationController: _transformationController,
+                onInteractionStart: (details) {
+                  _onUserInteraction();
+                },
                 onInteractionEnd: (details) {
+                  _onUserInteraction();
                   if (_transformationController.value.getMaxScaleOnAxis() <=
                       1.0) {
                     // 必要ならここで isPagingEnabled を true に戻すロジックを追加

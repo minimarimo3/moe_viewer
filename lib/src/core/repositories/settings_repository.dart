@@ -18,6 +18,7 @@ class SettingsRepository {
   static const String _gridScrollPreferPositionKey =
       'grid_scroll_prefer_position'; // 'begin' | 'middle' | 'end'
   static const String _visibleRatingsKey = 'visible_ratings';
+  static const String _autoScrollIntervalKey = 'auto_scroll_interval';
 
   Future<void> saveFolderSettings(List<FolderSetting> folderSettings) async {
     final prefs = await SharedPreferences.getInstance();
@@ -168,5 +169,16 @@ class SettingsRepository {
       // デフォルトでは全てのレーティングを表示
       return {Rating.nsfw: true, Rating.sfw: true, Rating.unclassified: true};
     }
+  }
+
+  // --- Auto scroll interval settings ---
+  Future<void> saveAutoScrollInterval(int interval) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_autoScrollIntervalKey, interval);
+  }
+
+  Future<int> loadAutoScrollInterval() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_autoScrollIntervalKey) ?? 30; // デフォルト3秒
   }
 }
