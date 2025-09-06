@@ -73,7 +73,7 @@ class ReservedTags {
     if (k.isEmpty) return k;
 
     // 「お気に入り」エイリアス対応
-    if (k == 'お気に入り' || k == '好き') {
+    if (k == 'お気に入り') {
       return favorite;
     }
 
@@ -93,7 +93,7 @@ class ReservedTags {
     if (q.isEmpty) return const [];
 
     // 「お気に入り」のサジェスト
-    const aliases = ['お気に入り', '好き'];
+    const aliases = ['お気に入り'];
     return aliases.where((a) => a.toLowerCase().contains(q)).toList();
   }
 }
