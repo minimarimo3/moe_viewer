@@ -892,16 +892,22 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       context: context,
       builder: (_) => SimpleDialog(
         title: const Text('並び替え'),
-        children: modes.entries
-            .map(
-              (e) => RadioListTile<String>(
-                value: e.key,
-                groupValue: _sortMode,
-                onChanged: (v) => Navigator.pop(context, v),
-                title: Text(e.value),
-              ),
-            )
-            .toList(),
+        children: [
+          RadioGroup<String>(
+            onChanged: (v) => Navigator.pop(context, v),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: modes.entries
+                  .map(
+                    (e) => RadioListTile<String>(
+                      value: e.key,
+                      title: Text(e.value),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ],
       ),
     );
   }

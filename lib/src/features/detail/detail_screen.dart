@@ -361,7 +361,7 @@ class _DetailScreenState extends State<DetailScreen>
                             decoration: BoxDecoration(
                               color: Theme.of(context)
                                   .colorScheme
-                                  .surfaceVariant
+                                  .surfaceContainerHighest
                                   .withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(8.0),
                             ),
