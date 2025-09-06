@@ -67,7 +67,6 @@ class ReservedTags {
   }
 
   /// レガシー機能：後方互換性のため残すが、新しい仕組みに移行
-  @deprecated
   static String normalizeToken(String token) {
     final k = token.trim().toLowerCase();
     if (k.isEmpty) return k;
@@ -81,13 +80,11 @@ class ReservedTags {
   }
 
   /// レガシー機能：後方互換性のため残すが、新しい仕組みに移行
-  @deprecated
   static List<String> normalizeTokens(Iterable<String> tokens) {
     return tokens.map(normalizeToken).where((t) => t.isNotEmpty).toList();
   }
 
   /// レガシー機能：後方互換性のため残すが、新しい仕組みに移行
-  @deprecated
   static List<String> suggestAliasTerms(String inputLastToken) {
     final q = inputLastToken.trim().toLowerCase();
     if (q.isEmpty) return const [];

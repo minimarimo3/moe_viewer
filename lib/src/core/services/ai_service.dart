@@ -215,6 +215,7 @@ class TfliteModelRunner implements ModelRunner {
 class TfliteNhwcModelRunner implements ModelRunner {
   late Interpreter _interpreter;
   late int _inputSize;
+  // ignore: unused_field
   late String _inputType;
 
   late List<String> _labels;
@@ -228,6 +229,7 @@ class TfliteNhwcModelRunner implements ModelRunner {
   late List<TensorType> _outputTypes;
   late int _chosenOutputIndex;
   late TensorType _chosenOutputType;
+  // ignore: unused_field
   late int _batchSize;
   late int _numClasses;
 
@@ -526,7 +528,7 @@ class TfliteNhwcModelRunner implements ModelRunner {
               .toList();
 
     // カテゴリ判定
-    bool _isYear(String label) {
+    bool isYear(String label) {
       if (_tagToCategory != null) {
         final cat = _tagToCategory![label];
         if (cat != null && cat.toLowerCase() == 'year') return true;
@@ -535,7 +537,7 @@ class TfliteNhwcModelRunner implements ModelRunner {
       return RegExp(r'^(19|20)\d{2}$').hasMatch(label);
     }
 
-    bool _isCharacter(String label) {
+    bool isCharacter(String label) {
       if (_tagToCategory != null) {
         final cat = _tagToCategory![label]?.toLowerCase();
         if (cat == 'character') return true;
@@ -547,8 +549,8 @@ class TfliteNhwcModelRunner implements ModelRunner {
     final features = <String>[];
     for (final s in effective) {
       final label = s.label;
-      if (_isYear(label)) continue; // year は無視
-      if (_isCharacter(label)) {
+      if (isYear(label)) continue; // year は無視
+      if (isCharacter(label)) {
         character.add(label);
       } else {
         features.add(label);

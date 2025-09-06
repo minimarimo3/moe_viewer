@@ -23,7 +23,6 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasFullAccess = false;
   int _shownDownloadErrorVersion = 0; // SnackBar多重表示防止
-  int _shownHashMismatchErrorVersion = 0; // ハッシュ不一致エラーSnackBar多重表示防止
 
   @override
   void initState() {
@@ -104,25 +103,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 content: Text(msg),
                 backgroundColor: Colors.red,
                 behavior: SnackBarBehavior.floating,
-              ),
-            );
-          });
-        }
-
-        // ハッシュ不一致時のユーザー通知（SnackBar）
-        if (settings.hashMismatchErrorMessage != null &&
-            settings.hashMismatchErrorVersion !=
-                _shownHashMismatchErrorVersion) {
-          _shownHashMismatchErrorVersion = settings.hashMismatchErrorVersion;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            final msg = settings.hashMismatchErrorMessage!;
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(msg),
-                backgroundColor: Colors.orange,
-                behavior: SnackBarBehavior.floating,
-                duration: const Duration(seconds: 5),
               ),
             );
           });

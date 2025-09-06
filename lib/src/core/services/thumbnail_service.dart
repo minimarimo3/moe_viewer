@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:developer';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
@@ -173,7 +172,7 @@ Future<Uint8List> computeHighQualityThumbnail(
 
 /// 指定した画像の「ベース」サムネイルを事前生成して、一意のパスに保存する。
 /// 表示時のサムネイル生成は、このベース画像からの縮小に切り替わるため軽くなる。
-/// 生成先: getTemporaryDirectory()/thumbbase_<hash>.jpg
+/// 生成先: getTemporaryDirectory()/thumbbase_(hash).jpg
 Future<void> precacheBaseThumbnail(
   String filePath, {
   int baseWidth = 2048,

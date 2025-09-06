@@ -48,15 +48,15 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   // ハッシュ不一致通知用のエラーメッセージ（イベント的に使う）
-  String? _hashMismatchErrorMessage;
-  int _hashMismatchErrorVersion = 0;
-  String? get hashMismatchErrorMessage => _hashMismatchErrorMessage;
-  int get hashMismatchErrorVersion => _hashMismatchErrorVersion;
-  void _emitHashMismatchError(String message) {
-    _hashMismatchErrorMessage = message;
-    // _hashMismatchErrorVersion++;
-    notifyListeners();
-  }
+  // String? _hashMismatchErrorMessage;
+  // int _hashMismatchErrorVersion = 0;
+  // String? get hashMismatchErrorMessage => _hashMismatchErrorMessage;
+  // int get hashMismatchErrorVersion => _hashMismatchErrorVersion;
+  // void _emitHashMismatchError(String message) {
+  // _hashMismatchErrorMessage = message;
+  // _hashMismatchErrorVersion++;
+  // notifyListeners();
+  // }
 
   String _currentAnalyzingFile = '';
   String get currentAnalyzingFile => _currentAnalyzingFile;
@@ -342,7 +342,7 @@ class SettingsProvider extends ChangeNotifier {
         final errorMessage =
             "モデルファイルのハッシュ値が一致しません。ファイルが破損している可能性があります。\n期待されるハッシュ: (${modelDef.modelFileHash}, ${modelDef.labelFileHash})\n実際のハッシュ: ($modelHash, $labelsHash)";
         log(errorMessage);
-        _emitHashMismatchError(errorMessage);
+        // _emitHashMismatchError(errorMessage);
       }
     } else {
       _isModelDownloaded = false;
