@@ -170,9 +170,7 @@ class PieMenuWidgetState extends State<PieMenuWidget> {
           );
         },
         child: Icon(
-          (_isCurrentFavorite ?? false)
-              ? Icons.favorite
-              : Icons.favorite_border,
+          (_isCurrentFavorite ?? false) ? Icons.heart_broken : Icons.favorite,
         ),
       ),
       PieAction(
