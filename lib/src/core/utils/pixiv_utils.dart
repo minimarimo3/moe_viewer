@@ -117,12 +117,12 @@ class ReservedTags {
     }
 
     // NSFWエイリアス対応
-    if (k == 'nsfw') {
+    if (k == 'nsfw' || k == 'r18' || k == 'r-18' || k == '官能的') {
       return nsfw;
     }
 
     // SFWエイリアス対応
-    if (k == 'sfw') {
+    if (k == 'sfw' || k == 'u18' || k == 'u-18') {
       return sfw;
     }
 
