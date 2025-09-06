@@ -545,6 +545,14 @@ class TfliteNhwcModelRunner implements ModelRunner {
       return false;
     }
 
+    bool isNsfw(String label) {
+      if (_tagToCategory != null) {
+        final cat = _tagToCategory![label]?.toLowerCase();
+        if (cat == 'rating' && label != 'rating_general') return true;
+      }
+      return false;
+    }
+
     final character = <String>[];
     final features = <String>[];
     for (final s in effective) {
@@ -1134,6 +1142,15 @@ class AiService {
     );
 
     return completer.future;
+  }
+
+  /// タグがNSFWかどうかを判定する
+  bool isNsfw(String label) {
+    // rating系タグでrating_general以外はNSFW
+    if (label.startsWith('rating_') && label != 'rating_general') {
+      return true;
+    }
+    return false;
   }
 
   void dispose() {

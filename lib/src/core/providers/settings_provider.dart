@@ -555,6 +555,16 @@ class SettingsProvider extends ChangeNotifier {
         featureTags,
       );
 
+      // AI解析結果からNSFW判定を保存
+      bool isNsfw = false;
+      for (final tag in tags) {
+        if (AiService().isNsfw(tag)) {
+          isNsfw = true;
+          break;
+        }
+      }
+      await dbHelper.setAiNsfwRating(file.path, isNsfw);
+
       _analyzedFileCount++;
       _lastFoundTags = tags;
       _currentAnalyzedImageBase64 = imageBase64;

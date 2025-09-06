@@ -76,7 +76,13 @@ class _DetailScreenState extends State<DetailScreen>
 
     // タグを別名に変換
     final db = DatabaseHelper.instance;
-    final aiTags = await db.getDisplayTagNames(rawAiTags);
+
+    // rating系タグを除外してからタグを処理
+    final filteredRawAiTags = rawAiTags
+        .where((tag) => !tag.startsWith('rating_'))
+        .toList();
+    final aiTags = await db.getDisplayTagNames(filteredRawAiTags);
+
     final rawManualTagsFiltered = rawManualTags
         .where((tag) => !TagCategoryUtils.isFavoriteTag(tag))
         .toList();
@@ -87,6 +93,9 @@ class _DetailScreenState extends State<DetailScreen>
     final aiFeatureTagsFromDB = rawAiFeatureTagsFromDB != null
         ? await db.getDisplayTagNames(rawAiFeatureTagsFromDB)
         : null;
+
+    // NSFW判定を取得
+    final nsfwRating = await db.getNsfwRating(imageFile.path);
 
     // Pixiv IDを取得
     final pixivId = _extractPixivId(imageFile.path);
@@ -412,7 +421,80 @@ class _DetailScreenState extends State<DetailScreen>
                             ),
                           ],
 
-                          // 4. AIキャラタグセクション
+                          // 4. NSFW判定セクション
+                          if (nsfwRating != null) ...[
+                            const SizedBox(height: 24.0),
+                            Row(
+                              children: [
+                                const Icon(Icons.security, size: 20),
+                                const SizedBox(width: 8.0),
+                                const Text(
+                                  '自動NSFW判定',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12.0),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0,
+                                vertical: 12.0,
+                              ),
+                              decoration: BoxDecoration(
+                                color: (nsfwRating['isNsfw'] as bool)
+                                    ? Colors.pink.withValues(alpha: 0.2)
+                                    : Colors.grey.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(8.0),
+                                border: Border.all(
+                                  color: (nsfwRating['isNsfw'] as bool)
+                                      ? Colors.pink.withValues(alpha: 0.4)
+                                      : Colors.grey.withValues(alpha: 0.5),
+                                  width: 1.0,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    (nsfwRating['isNsfw'] as bool)
+                                        ? Icons.favorite
+                                        : Icons.child_friendly,
+                                    color: (nsfwRating['isNsfw'] as bool)
+                                        ? Colors.pink[300]
+                                        : Colors.grey[600],
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8.0),
+                                  Text(
+                                    (nsfwRating['isNsfw'] as bool)
+                                        ? '官能的'
+                                        : 'U-18',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: (nsfwRating['isNsfw'] as bool)
+                                          ? Colors.pink[300]
+                                          : Colors.grey[600],
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    (nsfwRating['isManual'] as bool)
+                                        ? '手動設定'
+                                        : 'AI判定',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+
+                          // 5. AIキャラタグセクション
                           if (aiCharacterTags.isNotEmpty) ...[
                             const SizedBox(height: 24.0),
                             Row(
@@ -451,7 +533,7 @@ class _DetailScreenState extends State<DetailScreen>
                             ),
                           ],
 
-                          // 5. AI特徴タグセクション
+                          // 6. AI特徴タグセクション
                           if (aiFeatureTags.isNotEmpty) ...[
                             const SizedBox(height: 24.0),
                             Row(

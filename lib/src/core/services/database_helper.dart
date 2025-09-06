@@ -18,13 +18,13 @@ class DatabaseHelper {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 1, // バージョンを1にリセット
+      version: 2, // バージョンを2に更新
       onCreate: _createDB,
+      onUpgrade: _upgradeDB,
       onConfigure: (db) async {
         // 外部キー制約を有効化
         await db.execute('PRAGMA foreign_keys = ON');
       },
-      // onUpgradeは不要なため削除
     );
   }
 
@@ -91,6 +91,30 @@ class DatabaseHelper {
         created_at INTEGER NOT NULL
       )
     ''');
+
+    // NSFW判定テーブル
+    await db.execute('''
+      CREATE TABLE nsfw_ratings (
+        path TEXT PRIMARY KEY,
+        is_nsfw INTEGER NOT NULL, -- 0: U-18, 1: 官能的
+        is_manual INTEGER NOT NULL DEFAULT 0, -- 0: AI判定, 1: 手動設定
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+  }
+
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // バージョン2: NSFW判定テーブルを追加
+      await db.execute('''
+        CREATE TABLE nsfw_ratings (
+          path TEXT PRIMARY KEY,
+          is_nsfw INTEGER NOT NULL, -- 0: U-18, 1: 官能的
+          is_manual INTEGER NOT NULL DEFAULT 0, -- 0: AI判定, 1: 手動設定
+          updated_at INTEGER NOT NULL
+        )
+      ''');
+    }
   }
 
   // 解析結果を保存または更新する
@@ -650,5 +674,53 @@ class DatabaseHelper {
     }
 
     return matchedTags.toList();
+  }
+
+  /// NSFW判定を保存または更新（手動設定）
+  Future<void> setNsfwRating(String path, bool isNsfw) async {
+    final db = await instance.database;
+    await db.insert('nsfw_ratings', {
+      'path': path,
+      'is_nsfw': isNsfw ? 1 : 0,
+      'is_manual': 1,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// AI判定のNSFW判定を保存または更新（AI判定）
+  Future<void> setAiNsfwRating(String path, bool isNsfw) async {
+    final db = await instance.database;
+    // 手動設定が存在する場合は更新しない
+    final existing = await db.query(
+      'nsfw_ratings',
+      where: 'path = ? AND is_manual = 1',
+      whereArgs: [path],
+    );
+    if (existing.isNotEmpty) return;
+
+    await db.insert('nsfw_ratings', {
+      'path': path,
+      'is_nsfw': isNsfw ? 1 : 0,
+      'is_manual': 0,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// NSFW判定を取得
+  Future<Map<String, dynamic>?> getNsfwRating(String path) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'nsfw_ratings',
+      where: 'path = ?',
+      whereArgs: [path],
+    );
+    if (result.isEmpty) return null;
+
+    final row = result.first;
+    return {
+      'isNsfw': (row['is_nsfw'] as int) == 1,
+      'isManual': (row['is_manual'] as int) == 1,
+      'updatedAt': row['updated_at'] as int,
+    };
   }
 }

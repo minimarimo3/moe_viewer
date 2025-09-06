@@ -19,6 +19,7 @@ class _TagEditDialogState extends State<TagEditDialog> {
   List<String> _allAvailableTags = [];
   List<String> _filteredSuggestions = [];
   Map<String, String> _tagAliases = {}; // タグ別名のキャッシュ
+  Map<String, dynamic>? _nsfwRating; // NSFW判定データ
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   bool _isLoading = true;
@@ -48,14 +49,20 @@ class _TagEditDialogState extends State<TagEditDialog> {
       );
       final availableTags = await db.getAllTags();
       final aliases = await db.getAllTagAliases();
+      final nsfwRating = await db.getNsfwRating(widget.imagePath);
 
       // 予約タグを分離してマニュアルタグに統合するが、お気に入りタグは除外
       final rawAiTags = allTags['ai'] ?? [];
       final rawManualTags = allTags['manual'] ?? [];
 
-      final categorized = TagCategoryUtils.categorizeAiTags(rawAiTags);
+      // rating系タグを除外
+      final filteredRawAiTags = rawAiTags
+          .where((tag) => !tag.startsWith('rating_'))
+          .toList();
+
+      final categorized = TagCategoryUtils.categorizeAiTags(filteredRawAiTags);
       final userTags = categorized['user'] ?? [];
-      final filteredAiTags = rawAiTags
+      final filteredAiTags = filteredRawAiTags
           .where((tag) => !userTags.contains(tag))
           .toList();
 
@@ -78,6 +85,7 @@ class _TagEditDialogState extends State<TagEditDialog> {
         _manualTags = combinedManualTags;
         _allAvailableTags = availableTags;
         _tagAliases = aliases;
+        _nsfwRating = nsfwRating;
         _isLoading = false;
       });
     } catch (e) {
@@ -330,6 +338,128 @@ class _TagEditDialogState extends State<TagEditDialog> {
                         const SizedBox(height: 24),
                       ],
 
+                      // NSFW判定セクション
+                      Row(
+                        children: [
+                          const Icon(Icons.security, size: 20),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'NSFW判定',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => _updateNsfwRating(false),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0,
+                                  vertical: 12.0,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: (_nsfwRating?['isNsfw'] == false)
+                                      ? Colors.grey.withValues(alpha: 0.3)
+                                      : Colors.grey.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8.0),
+                                  border: Border.all(
+                                    color: (_nsfwRating?['isNsfw'] == false)
+                                        ? Colors.grey[600]!
+                                        : Colors.grey.withValues(alpha: 0.3),
+                                    width: (_nsfwRating?['isNsfw'] == false)
+                                        ? 2.0
+                                        : 1.0,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.child_friendly,
+                                      color: Colors.grey[600],
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8.0),
+                                    Text(
+                                      'U-18',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => _updateNsfwRating(true),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0,
+                                  vertical: 12.0,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: (_nsfwRating?['isNsfw'] == true)
+                                      ? Colors.pink.withValues(alpha: 0.3)
+                                      : Colors.pink.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8.0),
+                                  border: Border.all(
+                                    color: (_nsfwRating?['isNsfw'] == true)
+                                        ? Colors.pink[300]!
+                                        : Colors.pink.withValues(alpha: 0.3),
+                                    width: (_nsfwRating?['isNsfw'] == true)
+                                        ? 2.0
+                                        : 1.0,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.favorite,
+                                      color: Colors.pink[300],
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8.0),
+                                    Text(
+                                      '官能的',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.pink[300],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_nsfwRating != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          (_nsfwRating!['isManual'] as bool)
+                              ? '手動設定済み'
+                              : 'AI判定',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+
                       // AIキャラタグセクション
                       if (_aiTags.isNotEmpty) ...[..._buildAiTagSections()],
 
@@ -560,6 +690,26 @@ class _TagEditDialogState extends State<TagEditDialog> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('別名の設定に失敗しました: $e')));
+      }
+    }
+  }
+
+  /// NSFW判定を変更
+  Future<void> _updateNsfwRating(bool isNsfw) async {
+    try {
+      await DatabaseHelper.instance.setNsfwRating(widget.imagePath, isNsfw);
+      setState(() {
+        _nsfwRating = {
+          'isNsfw': isNsfw,
+          'isManual': true,
+          'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        };
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('NSFW判定の更新に失敗しました: $e')));
       }
     }
   }
