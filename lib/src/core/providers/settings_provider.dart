@@ -615,7 +615,9 @@ class SettingsProvider extends ChangeNotifier {
     log("AI解析が完了または停止しました。");
   }
 
-  void stopAiAnalysis() {
+  void stopAiAnalysis(AiService aiService) {
+    if (!_isAnalyzing) return;
+    aiService.dispose();
     _isAnalyzing = false;
     _currentAnalyzingFile = '';
     _currentAnalyzedImageBase64 = null;

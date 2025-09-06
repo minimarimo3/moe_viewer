@@ -137,39 +137,39 @@ class _TagViewDialogState extends State<TagViewDialog>
   Color _getTagColor(String tag) {
     final theme = Theme.of(context);
     if (_aiCharacterTags.contains(tag)) {
-      return theme.colorScheme.secondary.withOpacity(0.1);
+      return theme.colorScheme.secondaryContainer;
     } else if (_aiFeatureTags.contains(tag)) {
-      return theme.colorScheme.primary.withOpacity(0.1);
+      return theme.colorScheme.primaryContainer;
     } else if (_aiTags.contains(tag)) {
-      return theme.colorScheme.tertiary.withOpacity(0.1);
+      return theme.colorScheme.tertiaryContainer;
     } else {
-      return theme.colorScheme.surfaceVariant.withOpacity(0.1);
+      return theme.colorScheme.surfaceContainerHigh;
     }
   }
 
   Color _getTagBorderColor(String tag) {
     final theme = Theme.of(context);
     if (_aiCharacterTags.contains(tag)) {
-      return theme.colorScheme.secondary;
+      return theme.colorScheme.secondary.withValues(alpha: 0.3);
     } else if (_aiFeatureTags.contains(tag)) {
-      return theme.colorScheme.primary;
+      return theme.colorScheme.primary.withValues(alpha: 0.3);
     } else if (_aiTags.contains(tag)) {
-      return theme.colorScheme.tertiary;
+      return theme.colorScheme.tertiary.withValues(alpha: 0.3);
     } else {
-      return theme.colorScheme.surfaceVariant;
+      return theme.colorScheme.outline.withValues(alpha: 0.3);
     }
   }
 
   Color _getTagTextColor(String tag) {
     final theme = Theme.of(context);
     if (_aiCharacterTags.contains(tag)) {
-      return theme.colorScheme.onSecondary;
+      return theme.colorScheme.onSecondaryContainer;
     } else if (_aiFeatureTags.contains(tag)) {
-      return theme.colorScheme.onPrimary;
+      return theme.colorScheme.onPrimaryContainer;
     } else if (_aiTags.contains(tag)) {
-      return theme.colorScheme.onTertiary;
+      return theme.colorScheme.onTertiaryContainer;
     } else {
-      return theme.colorScheme.onSurfaceVariant;
+      return theme.colorScheme.onSurface;
     }
   }
 
@@ -238,16 +238,20 @@ class _TagViewDialogState extends State<TagViewDialog>
   }) {
     final theme = Theme.of(context);
     final filteredTags = _getFilteredTags(tags);
-    if (filteredTags.isEmpty && _searchQuery.isEmpty)
+    if (filteredTags.isEmpty && _searchQuery.isEmpty) {
       return const SizedBox.shrink();
+    }
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.colorScheme.outline, width: 1),
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.2),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -255,7 +259,7 @@ class _TagViewDialogState extends State<TagViewDialog>
           Row(
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 20, color: color),
+                Icon(icon, size: 20, color: color ?? theme.colorScheme.primary),
                 const SizedBox(width: 8),
               ],
               Expanded(
@@ -268,11 +272,19 @@ class _TagViewDialogState extends State<TagViewDialog>
                   ),
                 ),
               ),
-              Text(
-                '${filteredTags.length}個',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.onSurfaceVariant,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${filteredTags.length}個',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
                 ),
               ),
             ],
@@ -289,7 +301,7 @@ class _TagViewDialogState extends State<TagViewDialog>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceVariant,
+                color: theme.colorScheme.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -327,20 +339,19 @@ class _TagViewDialogState extends State<TagViewDialog>
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.colorScheme.outline, width: 1),
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.2),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                Icons.shield,
-                size: 20,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              Icon(Icons.shield, size: 20, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -355,60 +366,75 @@ class _TagViewDialogState extends State<TagViewDialog>
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(
-                isNsfw ? Icons.warning_rounded : Icons.verified_user_rounded,
-                size: 20,
-                color: isNsfw
-                    ? theme.colorScheme.error
-                    : theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isNsfw ? 'NSFW' : 'Safe',
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isNsfw
+                  ? theme.colorScheme.errorContainer
+                  : theme.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isNsfw ? Icons.warning_rounded : Icons.verified_user_rounded,
+                  size: 20,
+                  color: isNsfw
+                      ? theme.colorScheme.onErrorContainer
+                      : theme.colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isNsfw ? 'NSFW' : 'Safe',
+                        style: TextStyle(
+                          color: isNsfw
+                              ? theme.colorScheme.onErrorContainer
+                              : theme.colorScheme.onPrimaryContainer,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      Text(
+                        isNsfw ? '成人向けコンテンツ' : '全年齢向けコンテンツ',
+                        style: TextStyle(
+                          color: isNsfw
+                              ? theme.colorScheme.onErrorContainer.withValues(
+                                  alpha: 0.8,
+                                )
+                              : theme.colorScheme.onPrimaryContainer.withValues(
+                                  alpha: 0.8,
+                                ),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!isManual)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'AI判定',
                       style: TextStyle(
-                        color: isNsfw
-                            ? theme.colorScheme.error
-                            : theme.colorScheme.primary,
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        fontSize: 14,
                       ),
                     ),
-                    Text(
-                      isNsfw ? '成人向けコンテンツ' : '全年齢向けコンテンツ',
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (!isManual)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
                   ),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceVariant,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    'AI判定',
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -421,9 +447,11 @@ class _TagViewDialogState extends State<TagViewDialog>
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: theme.colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.outline),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.5),
+        ),
       ),
       child: Row(
         children: [
@@ -486,9 +514,11 @@ class _TagViewDialogState extends State<TagViewDialog>
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.colorScheme.outline),
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.2),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -515,7 +545,7 @@ class _TagViewDialogState extends State<TagViewDialog>
             'AI',
             _aiTags.length + _aiFeatureTags.length,
             Icons.smart_toy,
-            theme.colorScheme.primaryContainer,
+            theme.colorScheme.primary,
           ),
         ],
       ),
@@ -597,25 +627,25 @@ class _TagViewDialogState extends State<TagViewDialog>
                         _buildTagSection(
                           'ユーザータグ',
                           _manualTags,
-                          color: Colors.green.shade700,
+                          color: Theme.of(context).colorScheme.secondary,
                           icon: Icons.edit,
                         ),
                         _buildTagSection(
                           'キャラクタータグ',
                           _aiCharacterTags,
-                          color: Colors.pink.shade700,
+                          color: Theme.of(context).colorScheme.tertiary,
                           icon: Icons.person,
                         ),
                         _buildTagSection(
                           '特徴タグ',
                           _aiFeatureTags,
-                          color: Colors.orange.shade700,
+                          color: Theme.of(context).colorScheme.primary,
                           icon: Icons.auto_awesome,
                         ),
                         _buildTagSection(
                           'AIタグ',
                           _aiTags,
-                          color: Colors.blue.shade700,
+                          color: Theme.of(context).colorScheme.primary,
                           icon: Icons.smart_toy,
                         ),
                       ],

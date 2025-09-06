@@ -611,11 +611,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         : null,
                                   ),
                                   onPressed: () {
+                                    final aiService = context.read<AiService>();
                                     if (settings.isAnalyzing) {
-                                      settings.stopAiAnalysis();
+                                      settings.stopAiAnalysis(aiService);
                                     } else {
-                                      final aiService = context
-                                          .read<AiService>();
                                       settings.startAiAnalysis(aiService);
                                     }
                                   },
