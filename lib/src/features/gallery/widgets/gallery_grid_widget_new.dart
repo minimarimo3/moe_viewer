@@ -9,6 +9,8 @@ import 'package:visibility_detector/visibility_detector.dart';
 import '../../../common_widgets/asset_thumbnail.dart';
 import '../../../common_widgets/file_thumbnail.dart';
 import '../../detail/detail_screen.dart';
+import 'package:provider/provider.dart';
+import '../../../core/providers/thumbnail_provider.dart';
 
 class GalleryGridWidget extends StatefulWidget {
   final List<dynamic> displayItems;
@@ -69,6 +71,7 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final thumbnailProvider = context.read<ThumbnailProvider>();
     final screenWidth = MediaQuery.of(context).size.width;
     final itemWidth =
         (screenWidth - (widget.crossAxisCount + 1) * 2) / widget.crossAxisCount;
@@ -109,6 +112,37 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
                     // 一定以上見えているもののみ採用（50%以上）
                     if (info.visibleFraction >= 0.5) {
                       widget.onItemVisible?.call(index);
+                      // 可視になったら高優先度で要求
+                      final item = widget.displayItems[index];
+                      if (item is File) {
+                        thumbnailProvider.requestThumbnail(
+                          item.path,
+                          thumbnailSize,
+                          height: null,
+                          highQuality: false,
+                          priority: ThumbnailPriority.high,
+                        );
+                      }
+                      // 可視範囲と前後のプリフェッチ更新
+                      thumbnailProvider.updateVisibleWindow(
+                        visibleIndices: _estimateVisibleIndices(index),
+                        items: widget.displayItems,
+                        width: thumbnailSize,
+                        height: null,
+                        highQuality: false,
+                      );
+                    } else if (info.visibleFraction == 0) {
+                      // 完全に非表示になったらデプリオライズ
+                      final item = widget.displayItems[index];
+                      if (item is File) {
+                        thumbnailProvider.cancelOrDeprioritize(
+                          item.path,
+                          thumbnailSize,
+                          height: null,
+                          highQuality: false,
+                          cancel: false,
+                        );
+                      }
                     }
                   },
                   child: _buildFlexibleThumbnail(
@@ -124,6 +158,17 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
         ],
       ),
     );
+  }
+
+  // 現在のindexを基点に可視範囲をざっくり推定（Masonryでは完全に正しくないが簡易）
+  Iterable<int> _estimateVisibleIndices(int centerIndex) {
+    final radius = 30; // 少し広めに取る
+    final start = (centerIndex - radius).clamp(
+      0,
+      widget.displayItems.length - 1,
+    );
+    final end = (centerIndex + radius).clamp(0, widget.displayItems.length - 1);
+    return List<int>.generate(end - start + 1, (i) => start + i);
   }
 
   Widget _buildFlexibleThumbnail(

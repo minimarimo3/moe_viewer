@@ -5,6 +5,8 @@ import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../../detail/detail_screen.dart';
+import 'package:provider/provider.dart';
+import '../../../core/providers/thumbnail_provider.dart';
 
 class GalleryListWidget extends StatelessWidget {
   final List<dynamic> displayItems;
@@ -119,12 +121,27 @@ class GalleryListWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final thumbnailProvider = context.read<ThumbnailProvider>();
     return NotificationListener<ScrollNotification>(
       onNotification: (ScrollNotification scrollInfo) {
         if (onScrollToEnd != null &&
             scrollInfo.metrics.extentAfter < 500 &&
             scrollInfo is ScrollUpdateNotification) {
           onScrollToEnd!();
+          // 下端付近では先読みも更新
+          final positions = itemPositionsListener.itemPositions.value;
+          if (positions.isNotEmpty) {
+            final visible = positions
+                .where((p) => p.itemTrailingEdge > 0 && p.itemLeadingEdge < 1)
+                .map((p) => p.index);
+            thumbnailProvider.updateVisibleWindow(
+              visibleIndices: visible,
+              items: displayItems,
+              width: _estimateTargetWidth(context),
+              height: null,
+              highQuality: false,
+            );
+          }
         }
         return false;
       },
@@ -142,6 +159,27 @@ class GalleryListWidget extends StatelessWidget {
               onVisibilityChanged: (info) {
                 if (info.visibleFraction >= 0.5) {
                   onItemVisible?.call(index);
+                  final item = displayItems[index];
+                  if (item is File) {
+                    thumbnailProvider.requestThumbnail(
+                      item.path,
+                      _estimateTargetWidth(context),
+                      height: null,
+                      highQuality: false,
+                      priority: ThumbnailPriority.high,
+                    );
+                  }
+                } else if (info.visibleFraction == 0) {
+                  final item = displayItems[index];
+                  if (item is File) {
+                    thumbnailProvider.cancelOrDeprioritize(
+                      item.path,
+                      _estimateTargetWidth(context),
+                      height: null,
+                      highQuality: false,
+                      cancel: false,
+                    );
+                  }
                 }
               },
               child: GestureDetector(
@@ -176,5 +214,12 @@ class GalleryListWidget extends StatelessWidget {
         },
       ),
     );
+  }
+
+  int _estimateTargetWidth(BuildContext context) {
+    // リストは横幅いっぱいで表示される想定。デバイスピクセル比を乗算。
+    final width = MediaQuery.of(context).size.width;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    return (width * dpr).round();
   }
 }

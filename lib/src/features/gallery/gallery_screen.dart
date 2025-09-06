@@ -19,6 +19,7 @@ import 'utils/gallery_shuffle_utils.dart';
 import '../albums/albums_screen.dart';
 import '../../common_widgets/dialogs.dart';
 import '../../common_widgets/loading_view.dart';
+import '../../core/providers/thumbnail_provider.dart';
 
 enum LoadingStatus {
   loading, // 読み込み中
@@ -201,6 +202,36 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       settings.setLastViewedImagePath(path);
       // 互換のためインデックスもしおりとして併用
       settings.setLastScrollIndex(index);
+    }
+
+    // サムネイルのプリフェッチ・優先度更新
+    if (mounted) {
+      final provider = context.read<ThumbnailProvider>();
+      final crossAxisCount = settings.gridCrossAxisCount;
+      if (crossAxisCount > 1) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final itemWidth =
+            (screenWidth - (crossAxisCount + 1) * 2) / crossAxisCount;
+        final size = (itemWidth * MediaQuery.of(context).devicePixelRatio)
+            .round();
+        provider.updateVisibleWindow(
+          visibleIndices: [index],
+          items: _displayItems,
+          width: size,
+          height: null,
+          highQuality: false,
+        );
+      } else {
+        final width = MediaQuery.of(context).size.width;
+        final dpr = MediaQuery.of(context).devicePixelRatio;
+        provider.updateVisibleWindow(
+          visibleIndices: [index],
+          items: _displayItems,
+          width: (width * dpr).round(),
+          height: null,
+          highQuality: false,
+        );
+      }
     }
   }
 

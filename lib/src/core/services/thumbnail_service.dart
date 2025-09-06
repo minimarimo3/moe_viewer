@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
-import 'package:image/image.dart' as img;
+import 'package:flutter_image_compress/flutter_image_compress.dart' as fic;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -35,23 +35,15 @@ Future<Uint8List> _generateThumbnail(ThumbnailRequest request) async {
       throw Exception('File too large: ${fileStat.size} bytes');
     }
 
-    // まずはベースキャッシュ（プリジェネ済み）があればそれを優先して読み込む
-    Uint8List bytes;
-    if (request.baseCachePath != null &&
-        await File(request.baseCachePath!).exists()) {
-      bytes = await File(request.baseCachePath!).readAsBytes();
-      log('Using base cached image for: $filePath');
-    } else {
-      bytes = await file.readAsBytes();
-    }
-    final image = img.decodeImage(bytes);
-
-    if (image == null) {
-      throw Exception('Failed to decode image');
-    }
+    // 入力ソースは、ベースキャッシュがあればそちらを優先
+    final String srcPath =
+        (request.baseCachePath != null &&
+            await File(request.baseCachePath!).exists())
+        ? request.baseCachePath!
+        : filePath;
 
     // メモリ効率のために最大サイズを制限
-    final maxDimension = 2048;
+    const maxDimension = 2048;
     int targetWidth = request.width;
     int? targetHeight = request.height;
 
@@ -63,16 +55,19 @@ Future<Uint8List> _generateThumbnail(ThumbnailRequest request) async {
       }
     }
 
-    final thumbnail = img.copyResize(
-      image,
-      width: targetWidth,
-      height: targetHeight,
-      interpolation: img.Interpolation.average, // 高速な補間方法
+    // flutter_image_compress による高速リサイズ&圧縮
+    final compressed = await fic.FlutterImageCompress.compressWithFile(
+      srcPath,
+      minWidth: targetWidth,
+      // 高さ未指定の場合は縦長でも過度に小さくならないよう、それなりの下限を与える
+      minHeight: targetHeight ?? (targetWidth * 2 ~/ 3),
+      quality: 85,
+      format: fic.CompressFormat.jpeg,
+      keepExif: false,
+      autoCorrectionAngle: true,
     );
 
-    final result = Uint8List.fromList(
-      img.encodeJpg(thumbnail, quality: 85), // 標準品質
-    );
+    final result = Uint8List.fromList(compressed ?? const <int>[]);
     log('Thumbnail generation completed for: $filePath');
 
     return result;
@@ -100,15 +95,8 @@ Future<Uint8List> _generateHighQualityThumbnail(
       throw Exception('File too large: ${fileStat.size} bytes');
     }
 
-    final bytes = await file.readAsBytes();
-    final image = img.decodeImage(bytes);
-
-    if (image == null) {
-      throw Exception('Failed to decode image');
-    }
-
-    // 高品質版では最大サイズを大きめに設定
-    final maxDimension = 4096;
+    // 入力ソースは常にオリジナル（高品質重視）
+    const maxDimension = 4096;
     int targetWidth = request.width;
     int? targetHeight = request.height;
 
@@ -120,16 +108,17 @@ Future<Uint8List> _generateHighQualityThumbnail(
       }
     }
 
-    final thumbnail = img.copyResize(
-      image,
-      width: targetWidth,
-      height: targetHeight,
-      interpolation: img.Interpolation.cubic, // 高品質な補間
+    final compressed = await fic.FlutterImageCompress.compressWithFile(
+      filePath,
+      minWidth: targetWidth,
+      minHeight: targetHeight ?? (targetWidth * 2 ~/ 3),
+      quality: 95,
+      format: fic.CompressFormat.jpeg,
+      keepExif: false,
+      autoCorrectionAngle: true,
     );
 
-    final result = Uint8List.fromList(
-      img.encodeJpg(thumbnail, quality: 95), // 高品質
-    );
+    final result = Uint8List.fromList(compressed ?? const <int>[]);
     log('High quality thumbnail generation completed for: $filePath');
 
     return result;
@@ -150,8 +139,9 @@ Future<Uint8List> computeThumbnail(
   final tempDir = await getTemporaryDirectory();
   final baseCacheFileName = 'thumbbase_${filePath.hashCode}.jpg';
   final baseCachePath = p.join(tempDir.path, baseCacheFileName);
-  return compute(
-    _generateThumbnail,
+  // 注意: flutter_image_compress はプラグインのため Isolate では利用できない。
+  // そのため compute は使わず、ネイティブ側で非同期に処理する。
+  return _generateThumbnail(
     ThumbnailRequest(filePath, width, height, baseCachePath: baseCachePath),
   );
 }
@@ -162,8 +152,8 @@ Future<Uint8List> computeHighQualityThumbnail(
   int width, {
   int? height,
 }) async {
-  return compute(
-    _generateHighQualityThumbnail,
+  // 同上の理由で、直接呼び出す。
+  return _generateHighQualityThumbnail(
     ThumbnailRequest(filePath, width, height),
   );
 }
@@ -188,17 +178,17 @@ Future<void> precacheBaseThumbnail(
       return;
     }
 
-    // ベース画像の生成（高さは自動）
-    final data = await compute(
-      _generateThumbnail,
-      ThumbnailRequest(
-        filePath,
-        baseWidth,
-        null,
-        // baseCachePath は入力としては不要だが、将来の最適化に備えて渡しておく
-        baseCachePath: null,
-      ),
+    // ベース画像の生成（高さは自動）。高速化のため直接 compressWithFile を使う
+    final compressed = await fic.FlutterImageCompress.compressWithFile(
+      filePath,
+      minWidth: baseWidth,
+      minHeight: baseWidth * 2 ~/ 3,
+      quality: 85,
+      format: fic.CompressFormat.jpeg,
+      keepExif: false,
+      autoCorrectionAngle: true,
     );
+    final data = Uint8List.fromList(compressed ?? const <int>[]);
     if (data.isEmpty) return;
     await baseFile.writeAsBytes(data, flush: false);
   } catch (e) {

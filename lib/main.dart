@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'src/core/providers/settings_provider.dart';
+import 'src/core/providers/thumbnail_provider.dart';
 import 'src/core/services/ai_service.dart';
 import 'src/core/services/nsfw_service.dart';
 import 'src/core/utils/pixiv_utils.dart';
@@ -25,6 +26,7 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider(create: (_) => ThumbnailProvider()),
         Provider(
           create: (_) => AiService(),
           dispose: (_, aiService) => aiService.dispose(),

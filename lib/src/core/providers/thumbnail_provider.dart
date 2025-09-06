@@ -1,0 +1,371 @@
+import 'dart:async';
+import 'dart:collection' show LinkedHashMap, MapBase;
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+// provider自体はここでは使用しない（画面側で使用）
+
+import '../services/thumbnail_pool.dart';
+import '../services/thumbnail_service.dart';
+
+/// サムネイルの優先度。
+/// 値が小さいほど優先度が高い。
+class ThumbnailPriority {
+  static const int high = 0;
+  static const int normal = 5;
+  static const int low = 10;
+}
+
+class _QueueEntry {
+  final String key;
+  final String filePath;
+  final int width;
+  final int? height;
+  final bool highQuality;
+  int priority;
+  DateTime enqueuedAt;
+  bool canceled = false;
+
+  _QueueEntry({
+    required this.key,
+    required this.filePath,
+    required this.width,
+    required this.height,
+    required this.highQuality,
+    required this.priority,
+  }) : enqueuedAt = DateTime.now();
+}
+
+/// LRU風に先頭が最も古いエントリになる LinkedHashMap を利用
+class _LruMap<K, V> extends MapBase<K, V> {
+  _LruMap({required this.maxEntries}) : _inner = LinkedHashMap<K, V>();
+  final int maxEntries;
+  final LinkedHashMap<K, V> _inner;
+
+  @override
+  V? operator [](Object? key) => _inner[key as K];
+
+  @override
+  void operator []=(K key, V value) {
+    if (_inner.length >= maxEntries && !_inner.containsKey(key)) {
+      _inner.remove(_inner.keys.first);
+    }
+    if (_inner.containsKey(key)) _inner.remove(key);
+    _inner[key] = value;
+  }
+
+  @override
+  void clear() => _inner.clear();
+
+  @override
+  Iterable<K> get keys => _inner.keys;
+
+  @override
+  V? remove(Object? key) => _inner.remove(key);
+}
+
+class ThumbnailProvider extends ChangeNotifier {
+  ThumbnailProvider({int memoryCacheSize = 200})
+    : _memoryCache = _LruMap<String, Uint8List>(maxEntries: memoryCacheSize);
+
+  // メモリキャッシュ（LRU）
+  final _LruMap<String, Uint8List> _memoryCache;
+
+  // ディスクキャッシュ格納先（テンポラリ）
+  Directory? _tempDir;
+
+  // キューと進行中
+  final Map<String, _QueueEntry> _queued = {}; // key -> entry
+  final Map<String, _QueueEntry> _inFlight = {}; // key -> entry
+
+  // 待機者（UIがFutureで待ちたい場合に使用可能）
+  final Map<String, List<Completer<Uint8List?>>> _waiters = {};
+
+  // 可視ウィンドウ追跡（プリフェッチ制御用）
+  Set<int> _visibleIndices = <int>{};
+
+  Future<Directory> _getTempDir() async {
+    return _tempDir ??= await getTemporaryDirectory();
+  }
+
+  // キャッシュキー生成（既存命名に合わせる）
+  static String makeKey(String filePath, int width, int? height, bool hq) {
+    final h = height?.toString() ?? 'auto';
+    final q = hq ? 'hq' : 'std';
+    return '${filePath}_w${width}_h${h}_$q';
+  }
+
+  Uint8List? getCachedByKey(String key) => _memoryCache[key];
+
+  Uint8List? getCached(
+    String filePath,
+    int width, {
+    int? height,
+    bool highQuality = false,
+  }) {
+    return _memoryCache[makeKey(filePath, width, height, highQuality)];
+  }
+
+  /// UIが個別に待ちたい場合用。通常は Selector で監視すれば十分。
+  Future<Uint8List?> waitFor(String key) {
+    final c = Completer<Uint8List?>();
+    _waiters.putIfAbsent(key, () => []).add(c);
+    return c.future;
+  }
+
+  /// サムネイル生成（または読み出し）を要求。存在すれば即座に通知。
+  void requestThumbnail(
+    String filePath,
+    int width, {
+    int? height,
+    bool highQuality = false,
+    int priority = ThumbnailPriority.normal,
+  }) {
+    final key = makeKey(filePath, width, height, highQuality);
+    // 既にメモリにある
+    final cached = _memoryCache[key];
+    if (cached != null) {
+      // 念のため通知（新規購読者向け）
+      notifyListeners();
+      return;
+    }
+
+    // 既に進行中なら優先度だけ更新
+    final inflight = _inFlight[key];
+    if (inflight != null) {
+      inflight.priority = priority;
+      return;
+    }
+
+    // キューに存在すれば優先度更新
+    final queued = _queued[key];
+    if (queued != null) {
+      queued.priority = priority;
+      queued.enqueuedAt = DateTime.now();
+      return;
+    }
+
+    // 新規エントリ追加
+    final entry = _QueueEntry(
+      key: key,
+      filePath: filePath,
+      width: width,
+      height: height,
+      highQuality: highQuality,
+      priority: priority,
+    );
+    _queued[key] = entry;
+    _pumpQueue();
+  }
+
+  /// キューから除去（未開始ならキャンセル、実行中は結果を破棄）
+  void cancelOrDeprioritize(
+    String filePath,
+    int width, {
+    int? height,
+    bool highQuality = false,
+    bool cancel = false,
+  }) {
+    final key = makeKey(filePath, width, height, highQuality);
+    final q = _queued[key];
+    if (q != null) {
+      if (cancel) {
+        q.canceled = true;
+        _queued.remove(key);
+      } else {
+        q.priority = ThumbnailPriority.low;
+      }
+      return;
+    }
+    final f = _inFlight[key];
+    if (f != null && !cancel) {
+      f.priority = ThumbnailPriority.low; // 実行中は優先度だけ下げる（結果は破棄しない）
+    }
+  }
+
+  /// 可視ウィンドウを更新し、可視は高優先度、前後は低優先度でプリフェッチ。
+  void updateVisibleWindow({
+    required Iterable<int> visibleIndices,
+    required List<dynamic> items,
+    required int width,
+    int? height,
+    bool highQuality = false,
+    int prefetchRadius = 20,
+  }) {
+    _visibleIndices = visibleIndices.toSet();
+    if (_visibleIndices.isEmpty) return;
+
+    final minIndex = _visibleIndices.reduce((a, b) => a < b ? a : b);
+    final maxIndex = _visibleIndices.reduce((a, b) => a > b ? a : b);
+
+    // 可視アイテムを高優先度で要求
+    for (final i in _visibleIndices) {
+      if (i < 0 || i >= items.length) continue;
+      final item = items[i];
+      if (item is File) {
+        requestThumbnail(
+          item.path,
+          width,
+          height: height,
+          highQuality: highQuality,
+          priority: ThumbnailPriority.high,
+        );
+      }
+    }
+
+    // 前後を低優先度でプリフェッチ
+    final startPrefetch = (minIndex - prefetchRadius).clamp(
+      0,
+      items.length - 1,
+    );
+    final endPrefetch = (maxIndex + prefetchRadius).clamp(0, items.length - 1);
+    for (int i = startPrefetch; i <= endPrefetch; i++) {
+      if (_visibleIndices.contains(i)) continue;
+      final item = items[i];
+      if (item is File) {
+        requestThumbnail(
+          item.path,
+          width,
+          height: height,
+          highQuality: highQuality,
+          priority: ThumbnailPriority.low,
+        );
+      }
+    }
+
+    // 遠方のキューはデプリオライズ or キャンセル
+    final nearSet = <String>{};
+    for (int i = startPrefetch; i <= endPrefetch; i++) {
+      if (i < 0 || i >= items.length) continue;
+      final item = items[i];
+      if (item is File) {
+        nearSet.add(makeKey(item.path, width, height, highQuality));
+      }
+    }
+    // キューにあるエントリのうち、near範囲外は優先度を下げる/キャンセル
+    final toCancel = <String>[];
+    _queued.forEach((key, entry) {
+      if (!nearSet.contains(key)) {
+        // キューが肥大化しないよう、一定以上はキャンセル
+        entry.priority = ThumbnailPriority.low;
+        if (_queued.length > 500) {
+          entry.canceled = true;
+          toCancel.add(key);
+        }
+      }
+    });
+    for (final k in toCancel) {
+      _queued.remove(k);
+    }
+  }
+
+  Future<void> _pumpQueue() async {
+    // 並列実行は pool が制御。ここでは可能な限り起動する。
+    // ただし、頻繁な呼び出しによる同時起動を抑えるため、マイクロタスクに積む。
+    scheduleMicrotask(() async {
+      if (_queued.isEmpty) return;
+
+      // 優先度・滞留時間でソート（高優先度・古い順）
+      final entries = _queued.values.toList()
+        ..sort((a, b) {
+          final pr = a.priority.compareTo(b.priority);
+          if (pr != 0) return pr;
+          return a.enqueuedAt.compareTo(b.enqueuedAt);
+        });
+
+      for (final entry in entries) {
+        if (entry.canceled) continue;
+        // すでにinFlightに移っている可能性に注意
+        if (_inFlight.containsKey(entry.key)) continue;
+        // キューからinFlightへ移動
+        _queued.remove(entry.key);
+        _inFlight[entry.key] = entry;
+
+        // 実行開始（poolが適切に制御）
+        unawaited(
+          _runOne(entry).whenComplete(() {
+            _inFlight.remove(entry.key);
+          }),
+        );
+      }
+    });
+  }
+
+  Future<void> _runOne(_QueueEntry entry) async {
+    if (entry.canceled) return;
+
+    final key = entry.key;
+    // ディスクキャッシュ確認
+    try {
+      final tempDir = await _getTempDir();
+      final h = entry.height?.toString() ?? 'auto';
+      final quality = entry.highQuality ? 'hq' : 'std';
+      final cacheFileName =
+          'thumb_${entry.filePath.hashCode}_w${entry.width}_h${h}_$quality.jpg';
+      final cacheFile = File(p.join(tempDir.path, cacheFileName));
+
+      if (!entry.canceled && await cacheFile.exists()) {
+        final bytes = await cacheFile.readAsBytes();
+        if (bytes.isNotEmpty) {
+          _memoryCache[key] = bytes;
+          _notifyKeyCompleted(key, bytes);
+          return;
+        }
+      }
+
+      // 生成
+      if (entry.canceled) return;
+      final bytes = await thumbnailPool.withResource(() async {
+        if (entry.highQuality) {
+          return computeHighQualityThumbnail(
+            entry.filePath,
+            entry.width,
+            height: entry.height,
+          );
+        } else {
+          return computeThumbnail(
+            entry.filePath,
+            entry.width,
+            height: entry.height,
+          );
+        }
+      });
+
+      if (entry.canceled) return; // 結果を破棄
+
+      if (bytes.isNotEmpty) {
+        _memoryCache[key] = bytes;
+        _notifyKeyCompleted(key, bytes);
+        // ディスクへ非同期保存
+        unawaited(cacheFile.writeAsBytes(bytes).catchError((e) => cacheFile));
+      } else {
+        _notifyKeyCompleted(key, null);
+      }
+    } catch (_) {
+      _notifyKeyCompleted(key, null);
+    }
+  }
+
+  void _notifyKeyCompleted(String key, Uint8List? bytes) {
+    final waiters = _waiters.remove(key);
+    if (waiters != null) {
+      for (final c in waiters) {
+        if (!c.isCompleted) c.complete(bytes);
+      }
+    }
+    notifyListeners();
+  }
+
+  /// 画面破棄時などに呼ぶと安全
+  @override
+  void dispose() {
+    // 以後に完了するジョブの結果は破棄
+    for (final e in _queued.values) {
+      e.canceled = true;
+    }
+    _queued.clear();
+    super.dispose();
+  }
+}

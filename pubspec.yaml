@@ -42,6 +42,8 @@ dependencies:
   # exifとか取得
   # image: ^3.2.0  # これは最新バージョンの4.5.4ではないが、flutter_tfliteが依存しているので3.2.0を使う
   image: ^4.5.4
+  # ネイティブ高速圧縮/リサイズ
+  flutter_image_compress: ^2.3.0
   # exif: ^3.3.0
   # 設定情報を保存する
   shared_preferences: ^2.5.3 
