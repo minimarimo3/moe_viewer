@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
 import '../../core/services/database_helper.dart';
+import '../../core/services/nsfw_service.dart';
 import '../../core/providers/settings_provider.dart';
 
 import 'package:flutter/material.dart';
@@ -94,8 +95,22 @@ class _DetailScreenState extends State<DetailScreen>
         ? await db.getDisplayTagNames(rawAiFeatureTagsFromDB)
         : null;
 
-    // NSFW判定を取得
-    final nsfwRating = await db.getNsfwRating(imageFile.path);
+    // NSFW判定を取得（既存のNSFWデータベース + 特殊タグからも取得）
+    Map<String, dynamic>? nsfwRating = await db.getNsfwRating(imageFile.path);
+
+    // 既存のNSFW判定がない場合、特殊タグから取得
+    if (nsfwRating == null) {
+      final nsfwFromTags = await NsfwService.instance.getNsfwRatingFromTags(
+        imageFile.path,
+      );
+      if (nsfwFromTags != null) {
+        nsfwRating = {
+          'isNsfw': nsfwFromTags,
+          'isManual': false, // 特殊タグからの取得はAI判定として扱う
+          'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        };
+      }
+    }
 
     // Pixiv IDを取得
     final pixivId = _extractPixivId(imageFile.path);
@@ -120,12 +135,16 @@ class _DetailScreenState extends State<DetailScreen>
       aiCharacterTags = categorizedAiTags['character'] ?? [];
       aiFeatureTags = categorizedAiTags['feature'] ?? [];
 
-      // 予約タグ（お気に入りなど）を手動タグに統合するが、お気に入りタグは除外
+      // 予約タグ（お気に入りなど）を手動タグに統合するが、お気に入りタグとNSFWタグは除外
       final userTags = categorizedAiTags['user'] ?? [];
-      final nonFavoriteUserTags = userTags
-          .where((tag) => !TagCategoryUtils.isFavoriteTag(tag))
+      final nonSpecialUserTags = userTags
+          .where(
+            (tag) =>
+                !TagCategoryUtils.isFavoriteTag(tag) &&
+                !TagCategoryUtils.isNsfwTag(tag),
+          )
           .toList();
-      combinedManualTags.addAll(nonFavoriteUserTags);
+      combinedManualTags.addAll(nonSpecialUserTags);
     }
 
     final totalTagCount =

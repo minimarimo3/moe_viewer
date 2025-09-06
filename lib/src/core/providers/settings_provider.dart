@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../services/ai_service.dart';
 import '../services/database_helper.dart';
 import '../services/file_crypto_service.dart';
+import '../services/nsfw_service.dart';
 import '../models/ai_model_definition.dart';
 import '../models/folder_setting.dart';
 import '../repositories/settings_repository.dart';
@@ -555,7 +556,7 @@ class SettingsProvider extends ChangeNotifier {
         featureTags,
       );
 
-      // AI解析結果からNSFW判定を保存
+      // AI解析結果からNSFW判定を保存（既存のNSFWデータベース + 特殊タグで同期）
       bool isNsfw = false;
       for (final tag in tags) {
         if (AiService().isNsfw(tag)) {
@@ -563,7 +564,8 @@ class SettingsProvider extends ChangeNotifier {
           break;
         }
       }
-      await dbHelper.setAiNsfwRating(file.path, isNsfw);
+      // 特殊タグとして保存（AI判定）
+      await NsfwService.instance.setAiNsfwRatingAsTags(file.path, isNsfw);
 
       _analyzedFileCount++;
       _lastFoundTags = tags;

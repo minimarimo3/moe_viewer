@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/database_helper.dart';
+import '../../../core/services/nsfw_service.dart';
 import '../../../core/utils/tag_category_utils.dart';
 
 class TagEditDialog extends StatefulWidget {
@@ -49,7 +50,25 @@ class _TagEditDialogState extends State<TagEditDialog> {
       );
       final availableTags = await db.getAllTags();
       final aliases = await db.getAllTagAliases();
-      final nsfwRating = await db.getNsfwRating(widget.imagePath);
+
+      // NSFW判定を取得（既存のNSFWデータベース + 特殊タグからも取得）
+      Map<String, dynamic>? nsfwRating = await db.getNsfwRating(
+        widget.imagePath,
+      );
+
+      // 既存のNSFW判定がない場合、特殊タグから取得
+      if (nsfwRating == null) {
+        final nsfwFromTags = await NsfwService.instance.getNsfwRatingFromTags(
+          widget.imagePath,
+        );
+        if (nsfwFromTags != null) {
+          nsfwRating = {
+            'isNsfw': nsfwFromTags,
+            'isManual': false, // 特殊タグからの取得はAI判定として扱う
+            'updatedAt': DateTime.now().millisecondsSinceEpoch,
+          };
+        }
+      }
 
       // 予約タグを分離してマニュアルタグに統合するが、お気に入りタグは除外
       final rawAiTags = allTags['ai'] ?? [];
@@ -66,16 +85,24 @@ class _TagEditDialogState extends State<TagEditDialog> {
           .where((tag) => !userTags.contains(tag))
           .toList();
 
-      // マニュアルタグに予約タグを統合するが、お気に入りタグは除外
-      final nonFavoriteUserTags = userTags
-          .where((tag) => !TagCategoryUtils.isFavoriteTag(tag))
+      // マニュアルタグに予約タグを統合するが、お気に入りタグとNSFWタグは除外
+      final nonSpecialUserTags = userTags
+          .where(
+            (tag) =>
+                !TagCategoryUtils.isFavoriteTag(tag) &&
+                !TagCategoryUtils.isNsfwTag(tag),
+          )
           .toList();
       final filteredRawManualTags = rawManualTags
-          .where((tag) => !TagCategoryUtils.isFavoriteTag(tag))
+          .where(
+            (tag) =>
+                !TagCategoryUtils.isFavoriteTag(tag) &&
+                !TagCategoryUtils.isNsfwTag(tag),
+          )
           .toList();
       final combinedManualTags = <String>[
         ...filteredRawManualTags,
-        ...nonFavoriteUserTags,
+        ...nonSpecialUserTags,
       ];
 
       setState(() {
@@ -697,7 +724,12 @@ class _TagEditDialogState extends State<TagEditDialog> {
   /// NSFW判定を変更
   Future<void> _updateNsfwRating(bool isNsfw) async {
     try {
-      await DatabaseHelper.instance.setNsfwRating(widget.imagePath, isNsfw);
+      // 特殊タグとしてNSFW判定を設定
+      await NsfwService.instance.setManualNsfwRatingAsTags(
+        widget.imagePath,
+        isNsfw,
+      );
+
       setState(() {
         _nsfwRating = {
           'isNsfw': isNsfw,

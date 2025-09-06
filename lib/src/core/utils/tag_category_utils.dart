@@ -82,6 +82,11 @@ class TagCategoryUtils {
     return tag == '__favorite__' || tag == '__お気に入り__';
   }
 
+  /// NSFW関連の特殊タグかどうかを判定する
+  static bool isNsfwTag(String tag) {
+    return tag == '__nsfw__' || tag == '__sfw__';
+  }
+
   /// AIタグをキャラタグ、特徴タグ、その他に分類する
   static Map<String, List<String>> categorizeAiTags(List<String> aiTags) {
     final characterTags = <String>[];
