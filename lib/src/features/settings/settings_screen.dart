@@ -11,6 +11,7 @@ import '../../common_widgets/dialogs.dart';
 import '../../core/services/ai_service.dart';
 import '../../core/models/ai_model_definition.dart';
 import '../../core/models/folder_setting.dart';
+import '../../core/models/rating.dart';
 import 'licenses_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -256,6 +257,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onChanged: (double value) {
                     settings.setGridCrossAxisCount(value.toInt());
                   },
+                ),
+              ),
+
+              ListTile(
+                leading: const Icon(Icons.visibility_outlined),
+                title: const Text('表示するレーティング'),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Wrap(
+                    spacing: 8.0,
+                    children: Rating.values.map((rating) {
+                      final isVisible = settings.visibleRatings[rating] ?? true;
+                      return FilterChip(
+                        label: Text(rating.displayName),
+                        selected: isVisible,
+                        onSelected: (bool selected) {
+                          settings.setRatingVisibility(rating, selected);
+                        },
+                        selectedColor: Theme.of(
+                          context,
+                        ).colorScheme.primaryContainer,
+                        checkmarkColor: Theme.of(
+                          context,
+                        ).colorScheme.onPrimaryContainer,
+                        backgroundColor: Theme.of(
+                          context,
+                        ).colorScheme.surfaceVariant,
+                        labelStyle: TextStyle(
+                          color: isVisible
+                              ? Theme.of(context).colorScheme.onPrimaryContainer
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontWeight: isVisible
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      );
+                    }).toList(),
+                  ),
                 ),
               ),
 

@@ -1,6 +1,7 @@
 import 'dart:developer';
 import 'database_helper.dart';
 import '../utils/pixiv_utils.dart';
+import '../models/rating.dart';
 
 /// NSFWの判定を予約タグとして管理するサービス
 class NsfwService {
@@ -17,6 +18,15 @@ class NsfwService {
   Future<bool?> getNsfwRatingFromTags(String path) async {
     final tags = await _getTags(path);
     return ReservedTags.getNsfwRating(tags);
+  }
+
+  /// レーティングを特殊タグから判定
+  Future<Rating> getRatingFromTags(String path) async {
+    final tags = await _getTags(path);
+    final nsfwRating = ReservedTags.getNsfwRating(tags);
+    if (nsfwRating == true) return Rating.nsfw;
+    if (nsfwRating == false) return Rating.sfw;
+    return Rating.unclassified;
   }
 
   /// NSFWの判定を特殊タグとして設定（AI判定の場合）

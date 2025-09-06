@@ -14,6 +14,7 @@ import '../services/file_crypto_service.dart';
 import '../services/nsfw_service.dart';
 import '../models/ai_model_definition.dart';
 import '../models/folder_setting.dart';
+import '../models/rating.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/image_repository.dart';
 import '../services/thumbnail_service.dart';
@@ -104,6 +105,16 @@ class SettingsProvider extends ChangeNotifier {
   String _gridScrollPreferPosition = 'middle';
   String get gridScrollPreferPosition => _gridScrollPreferPosition;
 
+  Map<Rating, bool> _visibleRatings = {
+    Rating.nsfw: true,
+    Rating.sfw: true,
+    Rating.unclassified: true,
+  };
+  Map<Rating, bool> get visibleRatings => _visibleRatings;
+
+  bool _ratingSettingsChanged = false;
+  bool get ratingSettingsChanged => _ratingSettingsChanged;
+
   /// ファイル破損チェック
   bool _isModelCorrupted = false;
   bool get isModelCorrupted => _isModelCorrupted;
@@ -132,6 +143,7 @@ class SettingsProvider extends ChangeNotifier {
     _folderSettings = await _settingsRepository.loadFolderSettings();
     _nsfwFilterEnabled = await _settingsRepository.loadNsfwFilter();
     _shuffleOrder = await _settingsRepository.loadShuffleOrder();
+    _visibleRatings = await _settingsRepository.loadVisibleRatings();
     // 内部トグル: グリッドのスクロール位置優先
     try {
       _gridScrollPreferPosition = await _settingsRepository
@@ -632,5 +644,23 @@ class SettingsProvider extends ChangeNotifier {
     _nsfwFilterEnabled = isEnabled;
     await _settingsRepository.saveNsfwFilter(isEnabled);
     notifyListeners();
+  }
+
+  Future<void> setVisibleRatings(Map<Rating, bool> visibleRatings) async {
+    _visibleRatings = Map.from(visibleRatings);
+    _ratingSettingsChanged = true;
+    await _settingsRepository.saveVisibleRatings(_visibleRatings);
+    notifyListeners();
+  }
+
+  Future<void> setRatingVisibility(Rating rating, bool isVisible) async {
+    _visibleRatings[rating] = isVisible;
+    _ratingSettingsChanged = true;
+    await _settingsRepository.saveVisibleRatings(_visibleRatings);
+    notifyListeners();
+  }
+
+  void markRatingSettingsAsProcessed() {
+    _ratingSettingsChanged = false;
   }
 }

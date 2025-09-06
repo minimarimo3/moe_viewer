@@ -6,6 +6,8 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../models/folder_setting.dart';
 import '../models/image_list.dart';
+import '../models/rating.dart';
+import '../services/nsfw_service.dart';
 
 class ImageRepository {
   static const int _batchSize = 200; // バッチサイズを増やして効率化
@@ -19,7 +21,11 @@ class ImageRepository {
   // 遅延読み込み用の状態管理
   bool _isLoadingMore = false;
   int _currentLoadedCount = 0;
-  Future<ImageList> getAllImages(List<FolderSetting> folderSettings) async {
+
+  Future<ImageList> getAllImages(
+    List<FolderSetting> folderSettings, {
+    Map<Rating, bool>? visibleRatings,
+  }) async {
     final enabledFolders = folderSettings.where((f) => f.isEnabled).toList();
     final selectedPaths = enabledFolders.map((f) => f.path).toList();
 
@@ -64,8 +70,11 @@ class ImageRepository {
             final file = await asset.file;
             // ファイルが取得できるものだけを表示対象にする（インデックス不整合を防止）
             if (file != null) {
-              allDisplayItems.add(asset);
-              allDetailFiles.add(file);
+              // レーティングフィルタリングをチェック
+              if (await _shouldIncludeFile(file.path, visibleRatings)) {
+                allDisplayItems.add(asset);
+                allDetailFiles.add(file);
+              }
             }
           }
 
@@ -91,6 +100,7 @@ class ImageRepository {
           directory,
           allDisplayItems,
           allDetailFiles,
+          visibleRatings,
         );
       }
     }
@@ -98,8 +108,26 @@ class ImageRepository {
     return ImageList(allDisplayItems, allDetailFiles);
   }
 
+  /// レーティングフィルタリングに基づいて、ファイルを含めるかどうかを判定
+  Future<bool> _shouldIncludeFile(
+    String filePath,
+    Map<Rating, bool>? visibleRatings,
+  ) async {
+    // レーティングフィルタが指定されていない場合は全て表示
+    if (visibleRatings == null) return true;
+
+    // ファイルのレーティングを取得
+    final rating = await NsfwService.instance.getRatingFromTags(filePath);
+
+    // レーティングの表示設定を確認
+    return visibleRatings[rating] ?? true;
+  }
+
   // 追加で画像を読み込む機能
-  Future<ImageList> loadMoreImages(List<FolderSetting> folderSettings) async {
+  Future<ImageList> loadMoreImages(
+    List<FolderSetting> folderSettings, {
+    Map<Rating, bool>? visibleRatings,
+  }) async {
     if (_isLoadingMore) return ImageList([], []);
 
     _isLoadingMore = true;
@@ -131,8 +159,11 @@ class ImageRepository {
             for (final asset in assets) {
               final file = await asset.file;
               if (file != null) {
-                additionalDisplayItems.add(asset);
-                additionalDetailFiles.add(file);
+                // レーティングフィルタリングをチェック
+                if (await _shouldIncludeFile(file.path, visibleRatings)) {
+                  additionalDisplayItems.add(asset);
+                  additionalDetailFiles.add(file);
+                }
               }
             }
 
@@ -151,6 +182,7 @@ class ImageRepository {
     Directory directory,
     List<dynamic> allDisplayItems,
     List<File> allDetailFiles,
+    Map<Rating, bool>? visibleRatings,
   ) async {
     final List<FileSystemEntity> entities = [];
 
@@ -169,7 +201,12 @@ class ImageRepository {
 
             // バッチサイズごとに処理
             if (entities.length >= _batchSize) {
-              _addBatchToLists(entities, allDisplayItems, allDetailFiles);
+              await _addBatchToLists(
+                entities,
+                allDisplayItems,
+                allDetailFiles,
+                visibleRatings,
+              );
               entities.clear();
               // UIの反応性を保つために小さな遅延を追加
               await Future.delayed(
@@ -182,7 +219,12 @@ class ImageRepository {
 
       // 残りのファイルを処理
       if (entities.isNotEmpty) {
-        _addBatchToLists(entities, allDisplayItems, allDetailFiles);
+        await _addBatchToLists(
+          entities,
+          allDisplayItems,
+          allDetailFiles,
+          visibleRatings,
+        );
       }
     } catch (e) {
       // ディレクトリアクセスエラーを静かに処理
@@ -190,15 +232,19 @@ class ImageRepository {
     }
   }
 
-  void _addBatchToLists(
+  Future<void> _addBatchToLists(
     List<FileSystemEntity> entities,
     List<dynamic> allDisplayItems,
     List<File> allDetailFiles,
-  ) {
+    Map<Rating, bool>? visibleRatings,
+  ) async {
     for (final entity in entities) {
       if (entity is File) {
-        allDisplayItems.add(entity);
-        allDetailFiles.add(entity);
+        // レーティングフィルタリングをチェック
+        if (await _shouldIncludeFile(entity.path, visibleRatings)) {
+          allDisplayItems.add(entity);
+          allDetailFiles.add(entity);
+        }
       }
     }
   }

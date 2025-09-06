@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/folder_setting.dart';
+import '../models/rating.dart';
 
 class SettingsRepository {
   static const String _foldersKey = 'folder_settings';
@@ -16,6 +17,7 @@ class SettingsRepository {
   static const String _shuffleOrderKey = 'shuffle_order';
   static const String _gridScrollPreferPositionKey =
       'grid_scroll_prefer_position'; // 'begin' | 'middle' | 'end'
+  static const String _visibleRatingsKey = 'visible_ratings';
 
   Future<void> saveFolderSettings(List<FolderSetting> folderSettings) async {
     final prefs = await SharedPreferences.getInstance();
@@ -139,5 +141,32 @@ class SettingsRepository {
   Future<String> loadGridScrollPreferPosition() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_gridScrollPreferPositionKey) ?? 'middle';
+  }
+
+  // --- Visible ratings settings ---
+  Future<void> saveVisibleRatings(Map<Rating, bool> visibleRatings) async {
+    final prefs = await SharedPreferences.getInstance();
+    final Map<String, bool> ratingsMap = visibleRatings.map(
+      (rating, isVisible) => MapEntry(rating.name, isVisible),
+    );
+    await prefs.setString(_visibleRatingsKey, jsonEncode(ratingsMap));
+  }
+
+  Future<Map<Rating, bool>> loadVisibleRatings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? ratingsJson = prefs.getString(_visibleRatingsKey);
+
+    if (ratingsJson != null) {
+      final Map<String, dynamic> ratingsMap = jsonDecode(ratingsJson);
+      return ratingsMap.map(
+        (key, value) => MapEntry(
+          Rating.values.firstWhere((r) => r.name == key),
+          value as bool,
+        ),
+      );
+    } else {
+      // デフォルトでは全てのレーティングを表示
+      return {Rating.nsfw: true, Rating.sfw: true, Rating.unclassified: true};
+    }
   }
 }

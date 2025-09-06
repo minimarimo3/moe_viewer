@@ -119,7 +119,31 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
     _loadImages();
 
+    // レーティング設定変更の監視を設定
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setupRatingSettingsListener();
+    });
+
     // ※ PopScopeを使用するため、addScopedWillPopCallbackは不要
+  }
+
+  void _setupRatingSettingsListener() {
+    // 定期的にレーティング設定の変更をチェック
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      _checkAndReloadIfNeeded();
+    });
+  }
+
+  void _checkAndReloadIfNeeded() {
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
+    if (settings.ratingSettingsChanged) {
+      settings.markRatingSettingsAsProcessed();
+      _loadImages();
+    }
   }
 
   @override
@@ -193,6 +217,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
       final imageList = await _imageRepository.getAllImages(
         settings.folderSettings,
+        visibleRatings: settings.visibleRatings,
       );
 
       if (!mounted) return; // ウィジェットが破棄されている場合は処理を停止
@@ -235,6 +260,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     try {
       final additionalImageList = await _imageRepository.loadMoreImages(
         settings.folderSettings,
+        visibleRatings: settings.visibleRatings,
       );
 
       if (!mounted) return;
