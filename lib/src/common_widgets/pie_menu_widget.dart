@@ -161,13 +161,17 @@ class PieMenuWidgetState extends State<PieMenuWidget> {
           setState(() {
             _isCurrentFavorite = newState;
           });
+
+          // SnackBarのメッセージを先に用意
+          final message = newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました';
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
+
           // 親に通知（お気に入り一覧などでの即時反映用）
           if (widget.onFavoriteToggled != null) {
             await widget.onFavoriteToggled!();
           }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(newState ? 'お気に入りに追加しました' : 'お気に入りを解除しました')),
-          );
         },
         child: Icon(
           (_isCurrentFavorite ?? false) ? Icons.heart_broken : Icons.favorite,

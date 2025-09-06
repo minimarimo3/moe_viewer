@@ -579,6 +579,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                   return;
                 }
                 final paths = _files.map((f) => f.path).toList();
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
                 try {
                   await AlbumsService.instance.updateManualOrder(
                     widget.album.id,
@@ -589,14 +590,14 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                     _reorderUIActive = false;
                     _reorderDirty = false;
                   });
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('並び順を保存しました')));
+                  scaffoldMessenger.showSnackBar(
+                    const SnackBar(content: Text('並び順を保存しました')),
+                  );
                 } catch (e) {
                   if (!mounted) return;
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('保存に失敗しました')));
+                  scaffoldMessenger.showSnackBar(
+                    const SnackBar(content: Text('保存に失敗しました')),
+                  );
                 }
               },
               icon: const Icon(Icons.check),
