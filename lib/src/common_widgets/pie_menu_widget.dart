@@ -152,6 +152,12 @@ class PieMenuWidgetState extends State<PieMenuWidget> {
         ),
       PieAction(
         tooltip: Text((_isCurrentFavorite ?? false) ? 'お気に入りを解除' : 'お気に入りに登録'),
+        buttonTheme: PieButtonTheme(
+          backgroundColor: (_isCurrentFavorite ?? false)
+              ? Colors.red
+              : Colors.blue,
+          iconColor: Colors.white,
+        ),
         onSelect: () async {
           final path = _currentTargetPath;
           if (path == null) return;
