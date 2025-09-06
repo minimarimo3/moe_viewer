@@ -432,6 +432,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                         ),
                       ),
                     )
+                  : _isFilterActive
+                  ? const Text('検索結果')
                   : const Text('Pixiv Viewer'),
               actions: [
                 IconButton(
@@ -517,19 +519,21 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                       _showShuffleOptionsDialog();
                     },
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.settings_outlined),
-                    onPressed: () async {
-                      _exitSearchMode();
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SettingsScreen(),
-                        ),
-                      );
-                      _loadImages();
-                    },
-                  ),
+                  // 設定アイコンは検索結果表示中は非表示にする
+                  if (!_isFilterActive)
+                    IconButton(
+                      icon: const Icon(Icons.settings_outlined),
+                      onPressed: () async {
+                        _exitSearchMode();
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SettingsScreen(),
+                          ),
+                        );
+                        _loadImages();
+                      },
+                    ),
                 ],
               ],
             ),
