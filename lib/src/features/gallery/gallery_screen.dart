@@ -79,6 +79,19 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   List<int> _activeFilterIndices = [];
   String? _lastCommittedQuery;
 
+  // 設定値から AutoScrollPosition を決定
+  AutoScrollPosition _resolveAutoScrollPosition(String name) {
+    switch (name) {
+      case 'begin':
+        return AutoScrollPosition.begin;
+      case 'end':
+        return AutoScrollPosition.end;
+      case 'middle':
+      default:
+        return AutoScrollPosition.middle;
+    }
+  }
+
   void _handleLongPress(dynamic item, Offset globalPosition) {
     // pie menu widget内でopenMenuForItemを呼び出すためのハンドラー
     log('--- _handleLongPress called ---');
@@ -273,9 +286,15 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
             if (settings.gridCrossAxisCount > 1 &&
                 _autoScrollController.hasClients) {
               // グリッド表示の場合：アイテム単位でスクロール（AutoScrollTagをアイテムに付与）
+              final prefer = _resolveAutoScrollPosition(
+                Provider.of<SettingsProvider>(
+                  context,
+                  listen: false,
+                ).gridScrollPreferPosition,
+              );
               await _autoScrollController.scrollToIndex(
                 targetIndex,
-                preferPosition: AutoScrollPosition.begin,
+                preferPosition: prefer,
                 duration: const Duration(milliseconds: 600),
               );
 
@@ -332,9 +351,15 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
               setState(() => _restoringPosition = true);
               if (settings.gridCrossAxisCount > 1 &&
                   _autoScrollController.hasClients) {
+                final prefer = _resolveAutoScrollPosition(
+                  Provider.of<SettingsProvider>(
+                    context,
+                    listen: false,
+                  ).gridScrollPreferPosition,
+                );
                 await _autoScrollController.scrollToIndex(
                   index,
-                  preferPosition: AutoScrollPosition.begin,
+                  preferPosition: prefer,
                   duration: const Duration(milliseconds: 600),
                 );
 
@@ -389,9 +414,15 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
             setState(() => _restoringPosition = true);
             if (settings.gridCrossAxisCount > 1 &&
                 _autoScrollController.hasClients) {
+              final prefer = _resolveAutoScrollPosition(
+                Provider.of<SettingsProvider>(
+                  context,
+                  listen: false,
+                ).gridScrollPreferPosition,
+              );
               await _autoScrollController.scrollToIndex(
                 index,
-                preferPosition: AutoScrollPosition.begin,
+                preferPosition: prefer,
                 duration: const Duration(milliseconds: 600),
               );
 

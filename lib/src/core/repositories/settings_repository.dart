@@ -14,6 +14,8 @@ class SettingsRepository {
   static const String _lastScrollIndexKey = 'last_scroll_index';
   static const String _lastViewedImagePathKey = 'last_viewed_image_path';
   static const String _shuffleOrderKey = 'shuffle_order';
+  static const String _gridScrollPreferPositionKey =
+      'grid_scroll_prefer_position'; // 'begin' | 'middle' | 'end'
 
   Future<void> saveFolderSettings(List<FolderSetting> folderSettings) async {
     final prefs = await SharedPreferences.getInstance();
@@ -126,5 +128,16 @@ class SettingsRepository {
   Future<void> clearShuffleOrder() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_shuffleOrderKey);
+  }
+
+  // --- Grid scroll prefer position (internal toggle) ---
+  Future<void> saveGridScrollPreferPosition(String positionName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_gridScrollPreferPositionKey, positionName);
+  }
+
+  Future<String> loadGridScrollPreferPosition() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_gridScrollPreferPositionKey) ?? 'middle';
   }
 }

@@ -99,6 +99,10 @@ class SettingsProvider extends ChangeNotifier {
   List<int>? _shuffleOrder;
   List<int>? get shuffleOrder => _shuffleOrder;
 
+  // Grid scroll prefer position: 'begin' | 'middle' | 'end'
+  String _gridScrollPreferPosition = 'middle';
+  String get gridScrollPreferPosition => _gridScrollPreferPosition;
+
   /// ファイル破損チェック
   bool _isModelCorrupted = false;
   bool get isModelCorrupted => _isModelCorrupted;
@@ -127,6 +131,13 @@ class SettingsProvider extends ChangeNotifier {
     _folderSettings = await _settingsRepository.loadFolderSettings();
     _nsfwFilterEnabled = await _settingsRepository.loadNsfwFilter();
     _shuffleOrder = await _settingsRepository.loadShuffleOrder();
+    // 内部トグル: グリッドのスクロール位置優先
+    try {
+      _gridScrollPreferPosition = await _settingsRepository
+          .loadGridScrollPreferPosition();
+    } catch (_) {
+      _gridScrollPreferPosition = 'middle';
+    }
 
     // UIをすぐに更新
     notifyListeners();
@@ -201,6 +212,16 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> clearShuffleOrder() async {
     _shuffleOrder = null;
     await _settingsRepository.clearShuffleOrder();
+    notifyListeners();
+  }
+
+  Future<void> setGridScrollPreferPosition(String positionName) async {
+    // 受け入れ値の簡易バリデーション
+    const allowed = {'begin', 'middle', 'end'};
+    if (!allowed.contains(positionName)) return;
+    _gridScrollPreferPosition = positionName;
+    await _settingsRepository.saveGridScrollPreferPosition(positionName);
+    // UIは変えないが、他参照箇所に反映されるよう通知
     notifyListeners();
   }
 
