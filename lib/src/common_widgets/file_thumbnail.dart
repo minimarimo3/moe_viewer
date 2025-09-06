@@ -162,7 +162,7 @@ class _FileThumbnailState extends State<FileThumbnail> {
   Widget build(BuildContext context) {
     if (_isLoading || _thumbnailData == null) {
       return Container(
-        color: Colors.grey[300],
+        color: Colors.transparent,
         child: _isLoading
             ? const Center(
                 child: SizedBox(

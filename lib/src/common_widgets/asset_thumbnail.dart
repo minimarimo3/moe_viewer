@@ -97,7 +97,6 @@ class _AssetThumbnailState extends State<AssetThumbnail> {
   Widget build(BuildContext context) {
     if (_isLoading || _thumbnailData == null) {
       return Container(
-        color: Colors.grey[300],
         child: _isLoading
             ? const Center(
                 child: SizedBox(
