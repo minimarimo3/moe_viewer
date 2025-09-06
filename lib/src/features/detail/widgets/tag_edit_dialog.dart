@@ -18,6 +18,7 @@ class _TagEditDialogState extends State<TagEditDialog> {
   List<String> _manualTags = [];
   List<String> _allAvailableTags = [];
   List<String> _filteredSuggestions = [];
+  Map<String, String> _tagAliases = {}; // タグ別名のキャッシュ
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   bool _isLoading = true;
@@ -46,6 +47,7 @@ class _TagEditDialogState extends State<TagEditDialog> {
         widget.imagePath,
       );
       final availableTags = await db.getAllTags();
+      final aliases = await db.getAllTagAliases();
 
       setState(() {
         _aiTags = allTags['ai'] ?? [];
@@ -53,6 +55,7 @@ class _TagEditDialogState extends State<TagEditDialog> {
         _aiFeatureTags = allTags['aiFeature'] ?? [];
         _manualTags = allTags['manual'] ?? [];
         _allAvailableTags = availableTags;
+        _tagAliases = aliases;
         _isLoading = false;
       });
     } catch (e) {
@@ -163,15 +166,20 @@ class _TagEditDialogState extends State<TagEditDialog> {
   }
 
   Widget _buildTagChip(String tag, {bool isManual = false}) {
+    final displayName = _tagAliases[tag] ?? tag;
+
     return Chip(
-      label: Text(tag),
+      label: GestureDetector(
+        onTap: () => _showTagAliasDialog(tag),
+        child: Text(displayName),
+      ),
       backgroundColor: isManual
           ? Theme.of(context).colorScheme.secondaryContainer
           : Theme.of(
               context,
             ).colorScheme.primaryContainer.withValues(alpha: 0.7),
       deleteIcon: const Icon(Icons.close, size: 18),
-      onDeleted: () => _removeTag(tag, isAiTag: !isManual),
+      onDeleted: () => _showTagDeleteDialog(tag, isAiTag: !isManual),
       labelStyle: TextStyle(
         fontSize: 13,
         color: isManual
@@ -391,5 +399,146 @@ class _TagEditDialogState extends State<TagEditDialog> {
     }
 
     return sections;
+  }
+
+  /// タグの別名設定ダイアログを表示
+  Future<void> _showTagAliasDialog(String tag) async {
+    final TextEditingController aliasController = TextEditingController();
+    final currentAlias = _tagAliases[tag];
+    aliasController.text = currentAlias ?? '';
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('タグ「$tag」の別名'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('元のタグ名: $tag'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: aliasController,
+              decoration: const InputDecoration(
+                labelText: '別名',
+                hintText: '別名を入力してください',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('キャンセル'),
+          ),
+          if (currentAlias != null)
+            TextButton(
+              onPressed: () => Navigator.pop(context, ''),
+              child: const Text('別名を削除'),
+            ),
+          TextButton(
+            onPressed: () {
+              final alias = aliasController.text.trim();
+              Navigator.pop(context, alias.isEmpty ? null : alias);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      await _setTagAlias(tag, result.isEmpty ? null : result);
+    }
+  }
+
+  /// タグ削除ダイアログを表示（タグ削除 vs 別名削除を選択可能）
+  Future<void> _showTagDeleteDialog(String tag, {bool isAiTag = false}) async {
+    final hasAlias = _tagAliases.containsKey(tag);
+    final displayName = _tagAliases[tag] ?? tag;
+
+    List<Widget> actions = [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('キャンセル'),
+      ),
+    ];
+
+    if (hasAlias) {
+      actions.addAll([
+        TextButton(
+          onPressed: () => Navigator.pop(context, 'remove_alias'),
+          child: const Text('別名を削除'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, 'remove_tag'),
+          child: const Text('タグを削除'),
+        ),
+      ]);
+    } else {
+      actions.add(
+        TextButton(
+          onPressed: () => Navigator.pop(context, 'remove_tag'),
+          child: const Text('削除'),
+        ),
+      );
+    }
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('削除操作'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('タグ: $displayName'),
+            if (hasAlias) ...[
+              const SizedBox(height: 8),
+              Text('元のタグ名: $tag'),
+              const SizedBox(height: 16),
+              const Text('削除する内容を選択してください：'),
+            ] else ...[
+              const SizedBox(height: 16),
+              Text(
+                '「$displayName」を削除しますか？${isAiTag ? '\n（AIタグは非表示になりますが、復元可能です）' : ''}',
+              ),
+            ],
+          ],
+        ),
+        actions: actions,
+      ),
+    );
+
+    if (result == 'remove_alias') {
+      await _setTagAlias(tag, null);
+    } else if (result == 'remove_tag') {
+      await _removeTag(tag, isAiTag: isAiTag);
+    }
+  }
+
+  /// タグの別名を設定
+  Future<void> _setTagAlias(String tag, String? alias) async {
+    try {
+      final db = DatabaseHelper.instance;
+      if (alias != null && alias.isNotEmpty) {
+        await db.setTagAlias(tag, alias);
+        setState(() {
+          _tagAliases[tag] = alias;
+        });
+      } else {
+        await db.removeTagAlias(tag);
+        setState(() {
+          _tagAliases.remove(tag);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('別名の設定に失敗しました: $e')));
+      }
+    }
   }
 }

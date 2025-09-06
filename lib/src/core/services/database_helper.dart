@@ -82,6 +82,15 @@ class DatabaseHelper {
         PRIMARY KEY (path, tag)
       )
     ''');
+
+    // タグ別名テーブル
+    await db.execute('''
+      CREATE TABLE tag_aliases (
+        original_tag TEXT PRIMARY KEY,
+        alias_tag TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    ''');
   }
 
   // 解析結果を保存または更新する
@@ -552,5 +561,94 @@ class DatabaseHelper {
       );
     }
     await batch.commit(noResult: true);
+  }
+
+  // タグ別名関連のメソッド
+
+  /// タグに別名を設定
+  Future<void> setTagAlias(String originalTag, String aliasTag) async {
+    final db = await instance.database;
+    await db.insert('tag_aliases', {
+      'original_tag': originalTag,
+      'alias_tag': aliasTag,
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// タグの別名を削除
+  Future<void> removeTagAlias(String originalTag) async {
+    final db = await instance.database;
+    await db.delete(
+      'tag_aliases',
+      where: 'original_tag = ?',
+      whereArgs: [originalTag],
+    );
+  }
+
+  /// 特定のタグの別名を取得
+  Future<String?> getTagAlias(String originalTag) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'tag_aliases',
+      columns: ['alias_tag'],
+      where: 'original_tag = ?',
+      whereArgs: [originalTag],
+    );
+    return result.isNotEmpty ? result.first['alias_tag'] as String : null;
+  }
+
+  /// すべてのタグ別名を取得
+  Future<Map<String, String>> getAllTagAliases() async {
+    final db = await instance.database;
+    final result = await db.query('tag_aliases');
+    final Map<String, String> aliases = {};
+    for (final row in result) {
+      aliases[row['original_tag'] as String] = row['alias_tag'] as String;
+    }
+    return aliases;
+  }
+
+  /// タグを表示用の名前に変換（別名がある場合は別名を、ない場合は元の名前を返す）
+  Future<String> getDisplayTagName(String originalTag) async {
+    final alias = await getTagAlias(originalTag);
+    return alias ?? originalTag;
+  }
+
+  /// 複数のタグを一括で表示用の名前に変換
+  Future<List<String>> getDisplayTagNames(List<String> originalTags) async {
+    final aliases = await getAllTagAliases();
+    return originalTags.map((tag) => aliases[tag] ?? tag).toList();
+  }
+
+  /// 検索時用：表示名（別名）から元のタグ名を検索
+  Future<List<String>> searchTagsByDisplayName(String query) async {
+    final db = await instance.database;
+    final queryLower = query.toLowerCase();
+
+    // 元のタグ名で検索
+    final originalMatches = await db.query(
+      'tag_aliases',
+      columns: ['original_tag'],
+      where: 'LOWER(original_tag) LIKE ?',
+      whereArgs: ['%$queryLower%'],
+    );
+
+    // 別名で検索
+    final aliasMatches = await db.query(
+      'tag_aliases',
+      columns: ['original_tag'],
+      where: 'LOWER(alias_tag) LIKE ?',
+      whereArgs: ['%$queryLower%'],
+    );
+
+    final Set<String> matchedTags = {};
+    for (final row in originalMatches) {
+      matchedTags.add(row['original_tag'] as String);
+    }
+    for (final row in aliasMatches) {
+      matchedTags.add(row['original_tag'] as String);
+    }
+
+    return matchedTags.toList();
   }
 }

@@ -62,12 +62,23 @@ class _DetailScreenState extends State<DetailScreen>
     // データベースからAIタグと手動タグを取得
     final allTags = await DatabaseHelper.instance
         .getAllTagsWithCategoriesForPath(imageFile.path);
-    final aiTags = allTags['ai'] ?? [];
-    final manualTags = allTags['manual'] ?? [];
+    final rawAiTags = allTags['ai'] ?? [];
+    final rawManualTags = allTags['manual'] ?? [];
 
     // 分類済みタグを取得（利用可能な場合）
-    final aiCharacterTagsFromDB = allTags['aiCharacter'] as List<String>?;
-    final aiFeatureTagsFromDB = allTags['aiFeature'] as List<String>?;
+    final rawAiCharacterTagsFromDB = allTags['aiCharacter'] as List<String>?;
+    final rawAiFeatureTagsFromDB = allTags['aiFeature'] as List<String>?;
+
+    // タグを別名に変換
+    final db = DatabaseHelper.instance;
+    final aiTags = await db.getDisplayTagNames(rawAiTags);
+    final manualTags = await db.getDisplayTagNames(rawManualTags);
+    final aiCharacterTagsFromDB = rawAiCharacterTagsFromDB != null
+        ? await db.getDisplayTagNames(rawAiCharacterTagsFromDB)
+        : null;
+    final aiFeatureTagsFromDB = rawAiFeatureTagsFromDB != null
+        ? await db.getDisplayTagNames(rawAiFeatureTagsFromDB)
+        : null;
 
     // Pixiv IDを取得
     final pixivId = _extractPixivId(imageFile.path);

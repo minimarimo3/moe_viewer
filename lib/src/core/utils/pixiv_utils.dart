@@ -1,3 +1,5 @@
+import '../services/database_helper.dart';
+
 /// Pixiv関連のユーティリティ
 class PixivUtils {
   /// ファイル名からPixivのイラストIDを推定して抽出する。
@@ -37,43 +39,61 @@ class ReservedTags {
     return t;
   }
 
-  // --- 検索エイリアス定義とユーティリティ ---
-  /// 予約タグ（正規）に対する自然言語エイリアス
-  /// 例: '__favorite__' <- ['お気に入り', '好き']
-  static const Map<String, List<String>> aliases = {
-    favorite: ['お気に入り', '好き'],
-  };
+  /// データベースの別名機能を使用してタグを表示用に変換
+  static Future<String> getDisplayName(String tag) async {
+    return await DatabaseHelper.instance.getDisplayTagName(tag);
+  }
 
-  /// エイリアスから正規タグを引くための逆引きマップ（小文字化したキーで一致）
-  static final Map<String, String> _aliasToCanonical = {
-    // 正規名自身も自分にマップしておく（大小区別なし）
-    favorite.toLowerCase(): favorite,
-    for (final entry in aliases.entries)
-      for (final a in entry.value) a.toLowerCase(): entry.key,
-  };
+  /// 複数のタグを表示用に変換
+  static Future<List<String>> getDisplayNames(List<String> tags) async {
+    return await DatabaseHelper.instance.getDisplayTagNames(tags);
+  }
 
-  /// 単一トークンを正規化（エイリアスを正規タグに変換、未登録はそのまま小文字化）
+  /// 検索クエリから実際のタグ名を取得（別名も考慮）
+  static Future<List<String>> searchTags(String query) async {
+    return await DatabaseHelper.instance.searchTagsByDisplayName(query);
+  }
+
+  /// 初期化時に既存の「お気に入り」別名をデータベースに登録
+  static Future<void> initializeDefaultAliases() async {
+    final db = DatabaseHelper.instance;
+
+    // 既存の別名が登録されているかチェック
+    final existingAlias = await db.getTagAlias(favorite);
+    if (existingAlias == null) {
+      // 「お気に入り」タグの別名を設定
+      await db.setTagAlias(favorite, 'お気に入り');
+    }
+  }
+
+  /// レガシー機能：後方互換性のため残すが、新しい仕組みに移行
+  @deprecated
   static String normalizeToken(String token) {
     final k = token.trim().toLowerCase();
     if (k.isEmpty) return k;
-    return _aliasToCanonical[k] ?? k;
+
+    // 「お気に入り」エイリアス対応
+    if (k == 'お気に入り' || k == '好き') {
+      return favorite;
+    }
+
+    return k;
   }
 
-  /// トークン配列を正規化
+  /// レガシー機能：後方互換性のため残すが、新しい仕組みに移行
+  @deprecated
   static List<String> normalizeTokens(Iterable<String> tokens) {
     return tokens.map(normalizeToken).where((t) => t.isNotEmpty).toList();
   }
 
-  /// 入力中の最後のトークンに対して、エイリアス候補を返す
+  /// レガシー機能：後方互換性のため残すが、新しい仕組みに移行
+  @deprecated
   static List<String> suggestAliasTerms(String inputLastToken) {
     final q = inputLastToken.trim().toLowerCase();
     if (q.isEmpty) return const [];
-    final terms = <String>{};
-    for (final list in aliases.values) {
-      for (final a in list) {
-        if (a.toLowerCase().contains(q)) terms.add(a);
-      }
-    }
-    return terms.take(20).toList();
+
+    // 「お気に入り」のサジェスト
+    const aliases = ['お気に入り', '好き'];
+    return aliases.where((a) => a.toLowerCase().contains(q)).toList();
   }
 }

@@ -12,7 +12,6 @@ import '../settings/settings_screen.dart';
 import '../../core/providers/settings_provider.dart';
 import '../../core/repositories/image_repository.dart';
 import '../../core/services/database_helper.dart';
-import '../../core/utils/pixiv_utils.dart';
 import '../../common_widgets/pie_menu_widget.dart';
 import 'widgets/gallery_grid_widget.dart';
 import 'widgets/gallery_list_widget.dart';
@@ -554,7 +553,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     _searchDebounce?.cancel();
     // テキストが変更されたら、サジェストを更新し、少し待ってから検索を適用する
     // テキストが空になっても検索モードは維持し、全件表示に戻す
-    _updateSuggestions();
+    _updateSuggestions(); // Fire-and-forget
     _searchDebounce = Timer(const Duration(milliseconds: 300), _applySearch);
   }
 
@@ -571,8 +570,18 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
     // スペース区切りでAND検索
     final tokens = raw.split(RegExp(r"\s+"));
+
+    // 別名を考慮して検索する：各トークンについて、元のタグ名と別名の両方で検索
+    final expandedTokens = <String>[];
+    for (final token in tokens) {
+      expandedTokens.add(token); // 元のトークン
+      // 別名があるタグも検索対象に追加
+      final matchedTags = await _db.searchTagsByDisplayName(token);
+      expandedTokens.addAll(matchedTags);
+    }
+
     // DBからパスのヒットリストを取得
-    final hitPaths = await _db.searchByTags(tokens);
+    final hitPaths = await _db.searchByTags(expandedTokens);
     // 現在の detailFiles のインデックスに変換
     final hitSet = hitPaths.toSet();
     final indices = <int>[];
@@ -611,7 +620,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   }
 
   // --- サジェスト ---
-  void _updateSuggestions() {
+  void _updateSuggestions() async {
     final raw = _searchController.text;
     // 最後のトークンに対してサジェスト
     final tokens = raw
@@ -620,24 +629,45 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         .toList();
     final last = tokens.isEmpty ? '' : tokens.last.toLowerCase();
     if (last.isEmpty) {
-      _suggestions = [];
+      setState(() {
+        _suggestions = [];
+      });
       _removeSuggestionsOverlay();
       return;
     }
-    // 1) 既存タグから一致
+
+    // 1) 既存タグから一致（元の名前で）
     final fromTags = _allTags
         .where((t) => t.toLowerCase().contains(last))
         .take(20)
         .toList();
-    // 2) エイリアス候補
-    final fromAliases = ReservedTags.suggestAliasTerms(last);
-    // 3) 結合して重複除去（エイリアスを先頭に優先）
-    final seen = <String>{};
-    final merged = <String>[
-      ...fromAliases.where((e) => seen.add(e)),
-      ...fromTags.where((e) => seen.add(e)),
-    ];
-    _suggestions = merged.take(20).toList();
+
+    // 2) 別名から一致するタグを検索
+    final matchedByAlias = await _db.searchTagsByDisplayName(last);
+
+    // 3) 別名を表示用に変換
+    final aliasesMap = await _db.getAllTagAliases();
+    final displayTags = <String>[];
+
+    // まず別名で表示できるもの
+    for (final tag in matchedByAlias) {
+      final alias = aliasesMap[tag];
+      if (alias != null && alias.toLowerCase().contains(last)) {
+        displayTags.add(alias);
+      }
+    }
+
+    // 次に元のタグ名で一致するもの（別名がある場合は別名で表示）
+    for (final tag in fromTags) {
+      final displayName = aliasesMap[tag] ?? tag;
+      if (!displayTags.contains(displayName)) {
+        displayTags.add(displayName);
+      }
+    }
+
+    setState(() {
+      _suggestions = displayTags.take(20).toList();
+    });
     if (_isSearchMode) _showSuggestionsOverlay();
   }
 

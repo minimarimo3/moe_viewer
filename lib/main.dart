@@ -3,9 +3,15 @@ import 'package:provider/provider.dart';
 
 import 'src/core/providers/settings_provider.dart';
 import 'src/core/services/ai_service.dart';
+import 'src/core/utils/pixiv_utils.dart';
 import 'src/features/dispatch/dispatch_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // デフォルトの別名を初期化
+  await ReservedTags.initializeDefaultAliases();
+
   runApp(
     MultiProvider(
       providers: [
