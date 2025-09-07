@@ -1,10 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/folder_setting.dart';
 import '../models/rating.dart';
+import '../utils/shared_preferences_helper.dart';
 
 class SettingsRepository {
   static const String _foldersKey = 'folder_settings';
@@ -21,7 +21,7 @@ class SettingsRepository {
   static const String _autoScrollIntervalKey = 'auto_scroll_interval';
 
   Future<void> saveFolderSettings(List<FolderSetting> folderSettings) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     final List<Map<String, dynamic>> folderList = folderSettings
         .map((f) => f.toMap())
         .toList();
@@ -29,7 +29,7 @@ class SettingsRepository {
   }
 
   Future<List<FolderSetting>> loadFolderSettings() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     final String? foldersJson = prefs.getString(_foldersKey);
     if (foldersJson != null) {
       final List<dynamic> folderList = jsonDecode(foldersJson);
@@ -49,48 +49,48 @@ class SettingsRepository {
   }
 
   Future<void> saveSelectedModel(String modelId) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     await prefs.setString(_selectedModelKey, modelId);
   }
 
   Future<String> loadSelectedModel() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     return prefs.getString(_selectedModelKey) ?? 'none';
   }
 
   Future<void> saveGridCrossAxisCount(int count) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     await prefs.setInt(_gridCrossAxisCountKey, count);
   }
 
   Future<int> loadGridCrossAxisCount() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     return prefs.getInt(_gridCrossAxisCountKey) ?? 2;
   }
 
   Future<void> saveThemeMode(ThemeMode mode) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     await prefs.setInt(_themeModeKey, mode.index);
   }
 
   Future<ThemeMode> loadThemeMode() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     final themeIndex = prefs.getInt(_themeModeKey) ?? 0;
     return ThemeMode.values[themeIndex];
   }
 
   Future<void> saveLastScrollIndex(int index) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     await prefs.setInt(_lastScrollIndexKey, index);
   }
 
   Future<int> loadLastScrollIndex() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     return prefs.getInt(_lastScrollIndexKey) ?? 0;
   }
 
   Future<void> saveLastViewedImagePath(String? imagePath) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     if (imagePath != null) {
       await prefs.setString(_lastViewedImagePathKey, imagePath);
     } else {
@@ -99,27 +99,27 @@ class SettingsRepository {
   }
 
   Future<String?> loadLastViewedImagePath() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     return prefs.getString(_lastViewedImagePathKey);
   }
 
   Future<void> saveNsfwFilter(bool isEnabled) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     await prefs.setBool(_nsfwKey, isEnabled);
   }
 
   Future<bool> loadNsfwFilter() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     return prefs.getBool(_nsfwKey) ?? false;
   }
 
   Future<void> saveShuffleOrder(List<int> order) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     await prefs.setString(_shuffleOrderKey, jsonEncode(order));
   }
 
   Future<List<int>?> loadShuffleOrder() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     final String? orderJson = prefs.getString(_shuffleOrderKey);
     if (orderJson != null) {
       final List<dynamic> orderList = jsonDecode(orderJson);
@@ -129,24 +129,24 @@ class SettingsRepository {
   }
 
   Future<void> clearShuffleOrder() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     await prefs.remove(_shuffleOrderKey);
   }
 
   // --- Grid scroll prefer position (internal toggle) ---
   Future<void> saveGridScrollPreferPosition(String positionName) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     await prefs.setString(_gridScrollPreferPositionKey, positionName);
   }
 
   Future<String> loadGridScrollPreferPosition() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     return prefs.getString(_gridScrollPreferPositionKey) ?? 'middle';
   }
 
   // --- Visible ratings settings ---
   Future<void> saveVisibleRatings(Map<Rating, bool> visibleRatings) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     final Map<String, bool> ratingsMap = visibleRatings.map(
       (rating, isVisible) => MapEntry(rating.name, isVisible),
     );
@@ -154,7 +154,7 @@ class SettingsRepository {
   }
 
   Future<Map<Rating, bool>> loadVisibleRatings() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     final String? ratingsJson = prefs.getString(_visibleRatingsKey);
 
     if (ratingsJson != null) {
@@ -173,12 +173,12 @@ class SettingsRepository {
 
   // --- Auto scroll interval settings ---
   Future<void> saveAutoScrollInterval(int interval) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     await prefs.setInt(_autoScrollIntervalKey, interval);
   }
 
   Future<int> loadAutoScrollInterval() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     return prefs.getInt(_autoScrollIntervalKey) ?? 30; // デフォルト3秒
   }
 }

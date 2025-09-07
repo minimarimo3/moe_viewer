@@ -3,9 +3,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../../common_widgets/asset_thumbnail.dart';
 import '../../../common_widgets/file_thumbnail.dart';
+import '../../../core/utils/shared_preferences_helper.dart';
 import '../../detail/detail_screen.dart';
 
 class GalleryGridWidget extends StatefulWidget {
@@ -226,7 +226,7 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
             ),
           ),
         );
-        final prefs = await SharedPreferences.getInstance();
+        final prefs = await SharedPreferencesHelper.instance;
         await prefs.setBool('wasOnDetailScreen', false);
       },
       onLongPressStart: (details) {

@@ -133,37 +133,50 @@ class SettingsProvider extends ChangeNotifier {
   CancelToken? _cancelToken;
 
   Future<void> init() async {
-    // 軽量な設定のみを先に読み込み、UIをブロックしない
-    _selectedModelId = await _settingsRepository.loadSelectedModel();
-    _gridCrossAxisCount = await _settingsRepository.loadGridCrossAxisCount();
-    _themeMode = await _settingsRepository.loadThemeMode();
-    _lastScrollIndex = await _settingsRepository.loadLastScrollIndex();
-    try {
-      _lastViewedImagePath = await _settingsRepository
-          .loadLastViewedImagePath();
-    } catch (e) {
-      _lastViewedImagePath = null;
-    }
-    _folderSettings = await _settingsRepository.loadFolderSettings();
-    _nsfwFilterEnabled = await _settingsRepository.loadNsfwFilter();
-    _shuffleOrder = await _settingsRepository.loadShuffleOrder();
-    _visibleRatings = await _settingsRepository.loadVisibleRatings();
-    // 内部トグル: グリッドのスクロール位置優先
-    try {
-      _gridScrollPreferPosition = await _settingsRepository
-          .loadGridScrollPreferPosition();
-    } catch (_) {
-      _gridScrollPreferPosition = 'middle';
-    }
-    // 自動スクロール間隔設定
-    try {
-      _autoScrollInterval = await _settingsRepository.loadAutoScrollInterval();
-      // 最小値制限のみ（0.5秒、つまり5）、上限は設けない
-      if (_autoScrollInterval < 5) {
-        _autoScrollInterval = 5; // 最小値：0.5秒
-      }
-    } catch (_) {
-      _autoScrollInterval = 30; // デフォルト3秒
+    // 軽量な設定を並列で読み込み、UIをブロックしない
+    final settingsFutures = [
+      _settingsRepository.loadSelectedModel(),
+      _settingsRepository.loadGridCrossAxisCount(),
+      _settingsRepository.loadThemeMode(),
+      _settingsRepository.loadLastScrollIndex(),
+      _settingsRepository.loadFolderSettings(),
+      _settingsRepository.loadNsfwFilter(),
+      _settingsRepository.loadShuffleOrder(),
+      _settingsRepository.loadVisibleRatings(),
+    ];
+
+    final results = await Future.wait([
+      settingsFutures[0], // selectedModel
+      settingsFutures[1], // gridCrossAxisCount
+      settingsFutures[2], // themeMode
+      settingsFutures[3], // lastScrollIndex
+      settingsFutures[4], // folderSettings
+      settingsFutures[5], // nsfwFilter
+      settingsFutures[6], // shuffleOrder
+      settingsFutures[7], // visibleRatings
+      // エラー処理が必要な設定は個別に処理
+      _settingsRepository.loadLastViewedImagePath().catchError((_) => null),
+      _settingsRepository.loadGridScrollPreferPosition().catchError(
+        (_) => 'middle',
+      ),
+      _settingsRepository.loadAutoScrollInterval().catchError((_) => 30),
+    ]);
+
+    _selectedModelId = results[0] as String;
+    _gridCrossAxisCount = results[1] as int;
+    _themeMode = results[2] as ThemeMode;
+    _lastScrollIndex = results[3] as int;
+    _folderSettings = results[4] as List<FolderSetting>;
+    _nsfwFilterEnabled = results[5] as bool;
+    _shuffleOrder = results[6] as List<int>?;
+    _visibleRatings = results[7] as Map<Rating, bool>;
+    _lastViewedImagePath = results[8] as String?;
+    _gridScrollPreferPosition = results[9] as String;
+    _autoScrollInterval = results[10] as int;
+
+    // 自動スクロール間隔の最小値制限
+    if (_autoScrollInterval < 5) {
+      _autoScrollInterval = 5; // 最小値：0.5秒
     }
 
     // UIをすぐに更新

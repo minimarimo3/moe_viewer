@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../../../common_widgets/asset_thumbnail.dart';
 import '../../../common_widgets/file_thumbnail.dart';
+import '../../../core/utils/shared_preferences_helper.dart';
 import '../../detail/detail_screen.dart';
 import 'package:provider/provider.dart';
 import '../../../core/providers/thumbnail_provider.dart';
@@ -211,7 +211,7 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
             ),
           ),
         );
-        final prefs = await SharedPreferences.getInstance();
+        final prefs = await SharedPreferencesHelper.instance;
         await prefs.setBool('wasOnDetailScreen', false);
       },
       onLongPressStart: (details) {

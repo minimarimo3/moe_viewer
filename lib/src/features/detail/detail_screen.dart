@@ -12,9 +12,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/utils/pixiv_utils.dart';
 import '../../core/utils/tag_category_utils.dart';
+import '../../core/utils/shared_preferences_helper.dart';
 import '../../common_widgets/pie_menu_widget.dart';
 
 class DetailScreen extends StatefulWidget {
@@ -720,7 +720,7 @@ class _DetailScreenState extends State<DetailScreen>
 
   // ★★★ 現在の状態をSharedPreferencesに保存する関数 ★★★
   Future<void> _saveCurrentState() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferencesHelper.instance;
     // FileリストをStringのリスト（パスのリスト）に変換
     final pathList = widget.imageFileList.map((file) => file.path).toList();
 

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../../../core/ui/app_gradients.dart';
 import '../../../common_widgets/file_thumbnail.dart';
 
 class AlbumCard extends StatelessWidget {
@@ -74,14 +75,7 @@ class AlbumCard extends StatelessWidget {
                         child: IgnorePointer(
                           child: Container(
                             decoration: const BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                                colors: [
-                                  Color.fromARGB(180, 0, 0, 0),
-                                  Color.fromARGB(0, 0, 0, 0),
-                                ],
-                              ),
+                              gradient: AppGradients.textOverlay,
                             ),
                           ),
                         ),
@@ -201,15 +195,10 @@ class _PlaceholderCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final base = theme.colorScheme.primaryContainer;
     final onBase = theme.colorScheme.onPrimaryContainer;
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [base.withValues(alpha: 0.9), base.withValues(alpha: 0.6)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: AppGradients.placeholderGradient(theme.colorScheme),
       ),
       child: Center(
         child: isLoading

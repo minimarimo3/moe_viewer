@@ -262,12 +262,37 @@ class ThumbnailProvider extends ChangeNotifier {
       if (_queued.isEmpty) return;
 
       // 優先度・滞留時間でソート（高優先度・古い順）
-      final entries = _queued.values.toList()
-        ..sort((a, b) {
-          final pr = a.priority.compareTo(b.priority);
-          if (pr != 0) return pr;
-          return a.enqueuedAt.compareTo(b.enqueuedAt);
-        });
+      // ソート処理を最適化: 高優先度のものだけを先に処理
+      final highPriorityEntries = <_QueueEntry>[];
+      final normalPriorityEntries = <_QueueEntry>[];
+      final lowPriorityEntries = <_QueueEntry>[];
+
+      for (final entry in _queued.values) {
+        switch (entry.priority) {
+          case ThumbnailPriority.high:
+            highPriorityEntries.add(entry);
+            break;
+          case ThumbnailPriority.normal:
+            normalPriorityEntries.add(entry);
+            break;
+          default:
+            lowPriorityEntries.add(entry);
+            break;
+        }
+      }
+
+      // 各グループ内で時間順ソート
+      highPriorityEntries.sort((a, b) => a.enqueuedAt.compareTo(b.enqueuedAt));
+      normalPriorityEntries.sort(
+        (a, b) => a.enqueuedAt.compareTo(b.enqueuedAt),
+      );
+      lowPriorityEntries.sort((a, b) => a.enqueuedAt.compareTo(b.enqueuedAt));
+
+      final entries = [
+        ...highPriorityEntries,
+        ...normalPriorityEntries,
+        ...lowPriorityEntries,
+      ];
 
       for (final entry in entries) {
         if (entry.canceled) continue;

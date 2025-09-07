@@ -1004,13 +1004,12 @@ class AiService {
     _initIsolate();
   }
   */
-  Future<void> switchModel(AiModelDefinition modelDef) async {
+  /// Isolateの初期化を共通化
+  Future<void> _initializeIsolate(AiModelDefinition modelDef) async {
     // 既存のIsolateがあれば、まず安全に終了させる
     dispose();
 
-    // Isolateの準備が完了したことを通知するための新しいCompleterを用意
     _isolateReadyCompleter = Completer<void>();
-
     _mainReceivePort = ReceivePort();
     final token = RootIsolateToken.instance;
     if (token == null) {
@@ -1043,6 +1042,10 @@ class AiService {
     });
   }
 
+  Future<void> switchModel(AiModelDefinition modelDef) async {
+    await _initializeIsolate(modelDef);
+  }
+
   Future<void> ensureModelLoaded(AiModelDefinition modelDef) async {
     // 既に正しいモデルがロード済みなら、何もしない
     if (_loadedModelId == modelDef.id && _isolate != null) {
@@ -1069,44 +1072,14 @@ class AiService {
 
     log('Model files confirmed to exist. Starting model loading...');
 
-    // 既存のIsolateがあれば、まず安全に終了させる
-    dispose();
-
-    _isolateReadyCompleter = Completer<void>();
-    _mainReceivePort = ReceivePort();
-    final token = RootIsolateToken.instance;
-    if (token == null) {
-      log('Could not get RootIsolateToken');
-      return;
-    }
-
-    _isolate = await Isolate.spawn(
-      _aiIsolateEntry,
-      IsolateInitMessage(
-        _mainReceivePort!.sendPort,
-        token,
-        modelDef.id,
-        modelDef.modelFileName,
-        modelDef.labelFileName,
-        modelDef.inputType,
-        modelDef.inputSize,
-      ),
-    );
-
-    _mainReceivePort!.listen((message) {
-      if (message is SendPort) {
-        _isolateSendPort = message;
-      } else if (message == 'ready') {
-        _loadedModelId = modelDef.id; // ★★★ ロードが完了したモデルIDを記録
-        _isolateReadyCompleter?.complete();
-        log(
-          'AI Service: Isolate connection established for ${modelDef.displayName}.',
-        );
-      }
-    });
+    // Isolateを初期化
+    await _initializeIsolate(modelDef);
 
     // Isolateの準備が完了するまで待つ
     await _isolateReadyCompleter?.future;
+
+    // ロードが完了したモデルIDを記録
+    _loadedModelId = modelDef.id;
   }
 
   // ★★★ 解析結果を格納するカスタムクラス ★★★
