@@ -3,21 +3,16 @@ import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart' as fic;
-import 'package:path/path.dart' as p;
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 
 class ThumbnailRequest {
   final String filePath;
   final int width;
   final int? height; // ★★★ 高さはnullを許容
-  // 可能なら元画像の代わりに使うベースキャッシュ（プリジェネ）パス
-  final String? baseCachePath;
-  ThumbnailRequest(
-    this.filePath,
-    this.width,
-    this.height, {
-    this.baseCachePath,
-  });
+
+  ThumbnailRequest(this.filePath, this.width, this.height);
 }
 
 // Isolate（バックグラウンド）で実行されるサムネイル生成関数
@@ -35,12 +30,8 @@ Future<Uint8List> _generateThumbnail(ThumbnailRequest request) async {
       throw Exception('File too large: ${fileStat.size} bytes');
     }
 
-    // 入力ソースは、ベースキャッシュがあればそちらを優先
-    final String srcPath =
-        (request.baseCachePath != null &&
-            await File(request.baseCachePath!).exists())
-        ? request.baseCachePath!
-        : filePath;
+    // 入力ソースは元ファイル
+    final String srcPath = filePath;
 
     // メモリ効率のために最大サイズを制限
     const maxDimension = 2048;
@@ -135,15 +126,9 @@ Future<Uint8List> computeThumbnail(
   int width, {
   int? height,
 }) async {
-  // プリジェネ済みのベースキャッシュがあれば、それをソースに用いるためにパスを渡す
-  final tempDir = await getTemporaryDirectory();
-  final baseCacheFileName = 'thumbbase_${filePath.hashCode}.jpg';
-  final baseCachePath = p.join(tempDir.path, baseCacheFileName);
-  // 注意: flutter_image_compress はプラグインのため Isolate では利用できない。
-  // そのため compute は使わず、ネイティブ側で非同期に処理する。
-  return _generateThumbnail(
-    ThumbnailRequest(filePath, width, height, baseCachePath: baseCachePath),
-  );
+  // flutter_image_compressはプラグインのためIsolateでは利用できない
+  // そのため直接関数を呼び出す
+  return _generateThumbnail(ThumbnailRequest(filePath, width, height));
 }
 
 // 高品質版のサムネイル生成（アルバム表示用）
@@ -152,98 +137,73 @@ Future<Uint8List> computeHighQualityThumbnail(
   int width, {
   int? height,
 }) async {
-  // 同上の理由で、直接呼び出す。
   return _generateHighQualityThumbnail(
     ThumbnailRequest(filePath, width, height),
   );
 }
 
-// --- 追加ユーティリティ: プリジェネ（ベースキャッシュ）とクリア処理 ---
-
-/// 指定した画像の「ベース」サムネイルを事前生成して、一意のパスに保存する。
-/// 表示時のサムネイル生成は、このベース画像からの縮小に切り替わるため軽くなる。
-/// 生成先: getTemporaryDirectory()/thumbbase_(hash).jpg
-Future<void> precacheBaseThumbnail(
-  String filePath, {
-  int baseWidth = 2048,
-}) async {
-  try {
-    final tempDir = await getTemporaryDirectory();
-    final baseCacheFileName = 'thumbbase_${filePath.hashCode}.jpg';
-    final baseCachePath = p.join(tempDir.path, baseCacheFileName);
-
-    final baseFile = File(baseCachePath);
-    if (await baseFile.exists()) {
-      // 既に存在する場合はスキップ
-      return;
-    }
-
-    // ベース画像の生成（高さは自動）。高速化のため直接 compressWithFile を使う
-    final compressed = await fic.FlutterImageCompress.compressWithFile(
-      filePath,
-      minWidth: baseWidth,
-      minHeight: baseWidth * 2 ~/ 3,
-      quality: 85,
-      format: fic.CompressFormat.jpeg,
-      keepExif: false,
-      autoCorrectionAngle: true,
-    );
-    final data = Uint8List.fromList(compressed ?? const <int>[]);
-    if (data.isEmpty) return;
-    await baseFile.writeAsBytes(data, flush: false);
-  } catch (e) {
-    log('precacheBaseThumbnail failed for $filePath: $e');
-  }
-}
-
-/// 一覧グリッド用（幅/高さが動的に変わる）サムネイルのキャッシュを一掃する。
-/// ベースキャッシュ（thumbbase_）は保持し、幅依存のキャッシュ（thumb_..._w*_h*.jpg）のみ削除する。
+/// グリッド用サムネイルのキャッシュを一掃する。
 Future<void> clearGridThumbnailsCache() async {
   try {
-    final tempDir = await getTemporaryDirectory();
-    final dir = Directory(tempDir.path);
-    if (!await dir.exists()) return;
-    final entries = await dir.list().toList();
-    for (final e in entries) {
-      if (e is File) {
-        final name = p.basename(e.path);
-        // width/heightを含む通常サムネイルのみ削除（ベースは保持）
-        if (name.startsWith('thumb_') && name.contains('_w')) {
-          try {
-            await e.delete();
-          } catch (err) {
-            // ignore per-file errors
-          }
-        }
-      }
-    }
+    await DefaultCacheManager().emptyCache();
   } catch (e) {
     log('clearGridThumbnailsCache failed: $e');
   }
 }
 
+/// 古い自前キャッシュファイルを削除する。
+/// flutter_cache_manager移行に伴い、path_providerで作成された古いキャッシュファイルを削除。
+Future<void> clearLegacyThumbnailCache() async {
+  try {
+    final tempDir = await getTemporaryDirectory();
+    final dir = Directory(tempDir.path);
+    if (!await dir.exists()) return;
+
+    final entries = await dir.list().toList();
+    int deletedCount = 0;
+
+    for (final e in entries) {
+      if (e is File) {
+        final name = p.basename(e.path);
+        // 旧命名規則のキャッシュファイルを削除
+        if (name.startsWith('thumb_') || name.startsWith('thumbbase_')) {
+          try {
+            await e.delete();
+            deletedCount++;
+          } catch (err) {
+            // 個別ファイルのエラーは無視
+          }
+        }
+      }
+    }
+
+    log('Cleared $deletedCount legacy thumbnail cache files');
+  } catch (e) {
+    log('clearLegacyThumbnailCache failed: $e');
+  }
+}
+
 /// 指定の幅/高さでグリッド用サムネイルを生成し、
-/// FileThumbnail と同じ命名規則のキャッシュファイル（thumb_..._w*_h*.jpg）に保存する。
+/// flutter_cache_managerに保存する。
 /// これにより表示時はディスクから即読み込みが可能になり、グレー表示を避けられる。
 Future<void> generateAndCacheGridThumbnail(
   String filePath,
   int width, {
   int? height,
-  bool highQuality = false, // 高品質オプション
+  bool highQuality = false,
 }) async {
   try {
     final data = highQuality
         ? await computeHighQualityThumbnail(filePath, width, height: height)
         : await computeThumbnail(filePath, width, height: height);
     if (data.isEmpty) return;
-    final tempDir = await getTemporaryDirectory();
+
     final h = height?.toString() ?? 'auto';
     final quality = highQuality ? 'hq' : 'std';
-    final cacheFileName =
-        'thumb_${filePath.hashCode}_w${width}_h${h}_$quality.jpg';
-    final cacheFile = File(p.join(tempDir.path, cacheFileName));
-    if (await cacheFile.exists()) return; // 既にあるならスキップ
-    await cacheFile.writeAsBytes(data, flush: false);
+    final cacheKey = 'thumb_${filePath.hashCode}_w${width}_h${h}_$quality';
+
+    // flutter_cache_managerに保存
+    await DefaultCacheManager().putFile(cacheKey, data, fileExtension: '.jpg');
   } catch (e) {
     log('generateAndCacheGridThumbnail failed for $filePath: $e');
   }

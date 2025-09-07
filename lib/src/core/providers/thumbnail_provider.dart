@@ -3,9 +3,7 @@ import 'dart:collection' show LinkedHashMap, MapBase;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-// provider自体はここでは使用しない（画面側で使用）
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../services/thumbnail_pool.dart';
 import '../services/thumbnail_service.dart';
@@ -73,8 +71,8 @@ class ThumbnailProvider extends ChangeNotifier {
   // メモリキャッシュ（LRU）
   final _LruMap<String, Uint8List> _memoryCache;
 
-  // ディスクキャッシュ格納先（テンポラリ）
-  Directory? _tempDir;
+  // flutter_cache_managerによるディスクキャッシュ
+  final BaseCacheManager _cacheManager = DefaultCacheManager();
 
   // キューと進行中
   final Map<String, _QueueEntry> _queued = {}; // key -> entry
@@ -86,11 +84,7 @@ class ThumbnailProvider extends ChangeNotifier {
   // 可視ウィンドウ追跡（プリフェッチ制御用）
   Set<int> _visibleIndices = <int>{};
 
-  Future<Directory> _getTempDir() async {
-    return _tempDir ??= await getTemporaryDirectory();
-  }
-
-  // キャッシュキー生成（既存命名に合わせる）
+  // キャッシュキー生成
   static String makeKey(String filePath, int width, int? height, bool hq) {
     final h = height?.toString() ?? 'auto';
     final q = hq ? 'hq' : 'std';
@@ -297,25 +291,29 @@ class ThumbnailProvider extends ChangeNotifier {
     if (entry.canceled) return;
 
     final key = entry.key;
-    // ディスクキャッシュ確認
+    // flutter_cache_managerでディスクキャッシュ確認
     try {
-      final tempDir = await _getTempDir();
       final h = entry.height?.toString() ?? 'auto';
       final quality = entry.highQuality ? 'hq' : 'std';
-      final cacheFileName =
-          'thumb_${entry.filePath.hashCode}_w${entry.width}_h${h}_$quality.jpg';
-      final cacheFile = File(p.join(tempDir.path, cacheFileName));
+      final cacheKey =
+          'thumb_${entry.filePath.hashCode}_w${entry.width}_h${h}_$quality';
 
-      if (!entry.canceled && await cacheFile.exists()) {
-        final bytes = await cacheFile.readAsBytes();
-        if (bytes.isNotEmpty) {
-          _memoryCache[key] = bytes;
-          _notifyKeyCompleted(key, bytes);
-          return;
+      if (!entry.canceled) {
+        final cachedFile = await _cacheManager.getFileFromCache(cacheKey);
+        if (cachedFile != null) {
+          final file = cachedFile.file;
+          if (await file.exists()) {
+            final bytes = await file.readAsBytes();
+            if (bytes.isNotEmpty) {
+              _memoryCache[key] = bytes;
+              _notifyKeyCompleted(key, bytes);
+              return;
+            }
+          }
         }
       }
 
-      // 生成
+      // サムネイル生成
       if (entry.canceled) return;
       final bytes = await thumbnailPool.withResource(() async {
         if (entry.highQuality) {
@@ -338,8 +336,14 @@ class ThumbnailProvider extends ChangeNotifier {
       if (bytes.isNotEmpty) {
         _memoryCache[key] = bytes;
         _notifyKeyCompleted(key, bytes);
-        // ディスクへ非同期保存
-        unawaited(cacheFile.writeAsBytes(bytes).catchError((e) => cacheFile));
+        // flutter_cache_managerでディスクへ非同期保存
+        unawaited(() async {
+          try {
+            await _cacheManager.putFile(cacheKey, bytes, fileExtension: '.jpg');
+          } catch (_) {
+            // エラーは無視（キャッシュ保存失敗は致命的ではない）
+          }
+        }());
       } else {
         _notifyKeyCompleted(key, null);
       }

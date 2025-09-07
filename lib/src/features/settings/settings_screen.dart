@@ -10,6 +10,7 @@ import '../../core/providers/settings_provider.dart';
 import '../../common_widgets/dialogs.dart';
 import '../../common_widgets/auto_scroll_interval_selector.dart';
 import '../../core/services/ai_service.dart';
+import '../../core/services/thumbnail_service.dart';
 import '../../core/models/ai_model_definition.dart';
 import '../../core/models/folder_setting.dart';
 import '../../core/models/rating.dart';
@@ -796,6 +797,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
 
               const Divider(),
+
+              ListTile(
+                leading: const Icon(Icons.cleaning_services),
+                title: const Text('古いキャッシュを削除'),
+                subtitle: const Text(
+                  'flutter_cache_manager移行前の古いサムネイルキャッシュファイルを削除',
+                ),
+                onTap: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('古いキャッシュを削除'),
+                      content: const Text(
+                        '古いサムネイルキャッシュファイルを削除しますか？\n削除後、サムネイルの再生成が必要になる場合があります。',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('キャンセル'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('削除'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirmed == true) {
+                    try {
+                      await clearLegacyThumbnailCache();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('古いキャッシュファイルを削除しました')),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('削除に失敗しました: $e')),
+                        );
+                      }
+                    }
+                  }
+                },
+              ),
 
               ListTile(
                 leading: const Icon(Icons.favorite_border),

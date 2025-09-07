@@ -23,6 +23,7 @@ class _TagViewDialogState extends State<TagViewDialog>
   Map<String, String> _tagAliases = {};
   Map<String, dynamic>? _nsfwRating;
   bool _isLoading = true;
+  // ignore: prefer_final_fields
   String _searchQuery = '';
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;

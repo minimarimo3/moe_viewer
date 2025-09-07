@@ -4,7 +4,6 @@ import 'dart:async';
 import 'database_helper.dart';
 import '../models/album.dart';
 import '../models/album_item.dart';
-import 'thumbnail_service.dart';
 
 class AlbumsService {
   AlbumsService._();
@@ -53,12 +52,8 @@ class AlbumsService {
     await DatabaseHelper.instance.addImagesToAlbum(albumId, paths);
     // キャッシュを無効化
     _invalidateCache(albumId);
-    // 追加された画像のベースサムネイルをバックグラウンドで事前生成
-    // 重くなりすぎないように短いディレイを入れつつ順次実行
-    for (final p in paths) {
-      // Fire-and-forget
-      unawaited(precacheBaseThumbnail(p));
-    }
+    // flutter_cache_managerが自動的にキャッシュを管理するため、
+    // 事前生成は不要（必要に応じてonDemandで生成される）
   }
 
   Future<void> addFiles(int albumId, List<File> files) async {
