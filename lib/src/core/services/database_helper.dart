@@ -723,4 +723,14 @@ class DatabaseHelper {
       'updatedAt': row['updated_at'] as int,
     };
   }
+
+  /// 指定フォルダのタグ付け済み画像数を取得
+  Future<int> getTaggedImageCountInFolder(String folderPath) async {
+    final db = await instance.database;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) FROM image_tags WHERE path LIKE ? AND tags NOT LIKE ? AND tags NOT LIKE ?",
+      ['$folderPath/%', '%AI解析エラー%', '%タグが見つかりませんでした%'],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
 }

@@ -257,4 +257,60 @@ class ImageRepository {
     _currentLoadedCount = 0;
     _isLoadingMore = false;
   }
+
+  /// 指定フォルダの画像ファイル総数を取得
+  Future<int> getTotalFileCountInFolder(String folderPath) async {
+    try {
+      // photo_managerからアルバムを検索
+      final folderName = folderPath.split('/').last.toLowerCase();
+
+      if (_cachedAlbums == null || _cachedAlbumMap == null) {
+        final filterOption = FilterOptionGroup(includeHiddenAssets: true);
+        _cachedAlbums = await PhotoManager.getAssetPathList(
+          filterOption: filterOption,
+        );
+        _cachedAlbumMap = {
+          for (var album in _cachedAlbums!) album.name.toLowerCase(): album,
+        };
+      }
+
+      if (_cachedAlbumMap!.containsKey(folderName)) {
+        final album = _cachedAlbumMap![folderName]!;
+        return await album.assetCountAsync;
+      }
+
+      // 直接ディレクトリスキャンが必要な場合
+      final hasFullAccess =
+          await Permission.manageExternalStorage.status.isGranted;
+      if (hasFullAccess) {
+        final directory = Directory(folderPath);
+        if (await directory.exists()) {
+          int count = 0;
+          await for (final entity in directory.list(recursive: true)) {
+            if (entity is File) {
+              final extension = entity.path.split('.').last.toLowerCase();
+              if ([
+                'jpg',
+                'jpeg',
+                'png',
+                'gif',
+                'bmp',
+                'webp',
+                'heic',
+                'heif',
+              ].contains(extension)) {
+                count++;
+              }
+            }
+          }
+          return count;
+        }
+      }
+
+      return 0;
+    } catch (e) {
+      log('Error counting files in folder $folderPath: $e');
+      return 0;
+    }
+  }
 }

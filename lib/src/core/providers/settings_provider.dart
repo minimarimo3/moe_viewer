@@ -98,6 +98,10 @@ class SettingsProvider extends ChangeNotifier {
   List<FolderSetting> _folderSettings = [];
   List<FolderSetting> get folderSettings => _folderSettings;
 
+  // フォルダ別統計情報（path -> {totalFiles, taggedFiles}）
+  Map<String, Map<String, int>> _folderStats = {};
+  Map<String, Map<String, int>> get folderStats => _folderStats;
+
   List<int>? _shuffleOrder;
   List<int>? get shuffleOrder => _shuffleOrder;
 
@@ -173,6 +177,9 @@ class SettingsProvider extends ChangeNotifier {
     _lastViewedImagePath = results[8] as String?;
     _gridScrollPreferPosition = results[9] as String;
     _autoScrollInterval = results[10] as int;
+
+    // フォルダ統計を非同期で更新（UIブロックを避ける）
+    updateFolderStats();
 
     // 自動スクロール間隔の最小値制限
     if (_autoScrollInterval < 5) {
@@ -648,6 +655,8 @@ class SettingsProvider extends ChangeNotifier {
     if (!_folderSettings.any((f) => f.path == newPath)) {
       _folderSettings.add(FolderSetting(path: newPath));
       await _saveFolders();
+      // フォルダ統計を更新
+      updateFolderStats();
     }
     // 重い処理は非同期で実行
     _updateProgressAsync();
@@ -655,7 +664,9 @@ class SettingsProvider extends ChangeNotifier {
 
   Future<void> removeFolder(String path) async {
     _folderSettings.removeWhere((f) => f.path == path);
+    _folderStats.remove(path); // 統計からも削除
     await _saveFolders();
+    notifyListeners();
     // 重い処理は非同期で実行
     _updateProgressAsync();
   }
@@ -664,6 +675,7 @@ class SettingsProvider extends ChangeNotifier {
     final folder = _folderSettings.firstWhere((f) => f.path == path);
     folder.isEnabled = !folder.isEnabled;
     await _saveFolders();
+    notifyListeners();
     // 重い処理は非同期で実行
     _updateProgressAsync();
   }
@@ -699,5 +711,36 @@ class SettingsProvider extends ChangeNotifier {
 
   void markRatingSettingsAsProcessed() {
     _ratingSettingsChanged = false;
+  }
+
+  /// フォルダ統計を更新
+  Future<void> updateFolderStats() async {
+    final stats = <String, Map<String, int>>{};
+
+    for (final folder in _folderSettings) {
+      try {
+        // 並列で統計を取得
+        final results = await Future.wait([
+          _imageRepository.getTotalFileCountInFolder(folder.path),
+          DatabaseHelper.instance.getTaggedImageCountInFolder(folder.path),
+        ]);
+
+        stats[folder.path] = {
+          'totalFiles': results[0],
+          'taggedFiles': results[1],
+        };
+      } catch (e) {
+        log('Error getting stats for folder ${folder.path}: $e');
+        stats[folder.path] = {'totalFiles': 0, 'taggedFiles': 0};
+      }
+    }
+
+    _folderStats = stats;
+    notifyListeners();
+  }
+
+  /// 特定フォルダの統計を取得
+  Map<String, int> getFolderStat(String folderPath) {
+    return _folderStats[folderPath] ?? {'totalFiles': 0, 'taggedFiles': 0};
   }
 }

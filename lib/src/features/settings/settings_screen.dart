@@ -155,7 +155,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           : null,
                     ),
                   ),
-                  subtitle: Text(folder.path, style: TextStyle(fontSize: 12)),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(folder.path, style: TextStyle(fontSize: 12)),
+                      const SizedBox(height: 2),
+                      Builder(
+                        builder: (context) {
+                          final stats = settings.getFolderStat(folder.path);
+                          final totalFiles = stats['totalFiles'] ?? 0;
+                          final taggedFiles = stats['taggedFiles'] ?? 0;
+                          return Text(
+                            'ファイル数: $totalFiles  |  タグ付け済み: $taggedFiles',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(
+                                context,
+                              ).textTheme.bodySmall?.color,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -237,6 +259,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   String? result = await FilePicker.platform.getDirectoryPath();
                   if (result != null) {
                     settings.addFolder(result);
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.refresh),
+                title: const Text('フォルダ統計を更新'),
+                subtitle: const Text('ファイル数とタグ付け済み画像数を再計算します'),
+                onTap: () async {
+                  final navigator = Navigator.of(context);
+                  final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+                  // 更新中の表示
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (BuildContext context) {
+                      return const AlertDialog(
+                        content: Row(
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(width: 16),
+                            Text('統計を更新中...'),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+
+                  try {
+                    await settings.updateFolderStats();
+                    if (mounted) {
+                      navigator.pop(); // ダイアログを閉じる
+                      scaffoldMessenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('フォルダ統計を更新しました'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      navigator.pop(); // ダイアログを閉じる
+                      scaffoldMessenger.showSnackBar(
+                        SnackBar(
+                          content: Text('統計の更新に失敗しました: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
                   }
                 },
               ),
