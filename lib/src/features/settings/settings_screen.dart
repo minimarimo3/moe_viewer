@@ -11,7 +11,6 @@ import '../../core/providers/settings_provider.dart';
 import '../../common_widgets/dialogs.dart';
 import '../../common_widgets/auto_scroll_interval_selector.dart';
 import '../../core/services/ai_service.dart';
-import '../../core/services/thumbnail_service.dart';
 import '../../core/models/ai_model_definition.dart';
 import '../../core/models/folder_setting.dart';
 import '../../core/models/rating.dart';
@@ -42,6 +41,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       // モデルのダウンロード状況のみをチェック（ハッシュチェックは行わない）
       await settings.checkModelDownloadStatus(selectedModelDef);
+
+      // フォルダ統計を強制更新
+      settings.forceUpdateFolderStats();
     });
 
     _checkFullAccessPermission();
@@ -97,6 +99,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     if (mounted) {
+      final settings = context.read<SettingsProvider>();
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -105,6 +109,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           backgroundColor: _hasFullAccess ? Colors.green : Colors.red,
         ),
       );
+
+      // 権限が許可された場合、フォルダ統計を再スキャン
+      if (_hasFullAccess) {
+        settings.updateFolderStatsAfterPermissionChange();
+      }
     }
   }
 
@@ -207,6 +216,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               final stats = settings.getFolderStat(folder.path);
                               final totalFiles = stats['totalFiles'] ?? 0;
                               final taggedFiles = stats['taggedFiles'] ?? 0;
+                              final isUpdating = settings.isUpdatingStats;
+
+                              if (isUpdating && totalFiles == 0) {
+                                return Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
+                                            ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'スキャン中...',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall?.color,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+
                               return Text(
                                 'ファイル数: $totalFiles  |  タグ付け済み: $taggedFiles',
                                 style: TextStyle(
@@ -288,8 +329,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ],
                             ),
                           );
-                          if (confirm == true)
+                          if (confirm == true) {
                             await _requestFullAccessPermission();
+                          }
                         }
                       },
                     );
@@ -302,54 +344,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   String? result = await FilePicker.platform.getDirectoryPath();
                   if (result != null) {
                     settings.addFolder(result);
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.refresh),
-                title: const Text('フォルダ統計を手動更新'),
-                onTap: () async {
-                  final navigator = Navigator.of(context);
-                  final scaffoldMessenger = ScaffoldMessenger.of(context);
-
-                  // 更新中の表示
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (BuildContext context) {
-                      return const AlertDialog(
-                        content: Row(
-                          children: [
-                            CircularProgressIndicator(),
-                            SizedBox(width: 16),
-                            Text('統計を更新中...'),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-
-                  try {
-                    await settings.updateFolderStats();
-                    if (mounted) {
-                      navigator.pop(); // ダイアログを閉じる
-                      scaffoldMessenger.showSnackBar(
-                        const SnackBar(
-                          content: Text('フォルダ統計を更新しました'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      navigator.pop(); // ダイアログを閉じる
-                      scaffoldMessenger.showSnackBar(
-                        SnackBar(
-                          content: Text('統計の更新に失敗しました: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
                   }
                 },
               ),
@@ -910,52 +904,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
 
               const Divider(),
-
-              ListTile(
-                leading: const Icon(Icons.cleaning_services),
-                title: const Text('古いキャッシュを削除'),
-                subtitle: const Text(
-                  'flutter_cache_manager移行前の古いサムネイルキャッシュファイルを削除',
-                ),
-                onTap: () async {
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('古いキャッシュを削除'),
-                      content: const Text(
-                        '古いサムネイルキャッシュファイルを削除しますか？\n削除後、サムネイルの再生成が必要になる場合があります。',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text('キャンセル'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('削除'),
-                        ),
-                      ],
-                    ),
-                  );
-
-                  if (confirmed == true) {
-                    try {
-                      await clearLegacyThumbnailCache();
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('古いキャッシュファイルを削除しました')),
-                        );
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('削除に失敗しました: $e')),
-                        );
-                      }
-                    }
-                  }
-                },
-              ),
 
               ListTile(
                 leading: const Icon(Icons.favorite_border),

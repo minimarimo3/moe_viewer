@@ -350,6 +350,12 @@ class ImageRepository {
   /// 指定フォルダの画像ファイル総数を取得
   Future<int> getTotalFileCountInFolder(String folderPath) async {
     try {
+      // .nomediaファイルの存在をチェック
+      final hasNomediaFile = await _hasNomediaFile(folderPath);
+
+      // MANAGE_EXTERNAL_STORAGE権限をチェック
+      final hasFullAccess = await Permission.manageExternalStorage.isGranted;
+
       // photo_managerからアルバムを検索
       final folderName = folderPath.split('/').last.toLowerCase();
 
@@ -363,50 +369,64 @@ class ImageRepository {
         };
       }
 
-      if (_cachedAlbumMap!.containsKey(folderName)) {
-        final album = _cachedAlbumMap![folderName]!;
-        return await album.assetCountAsync;
+      // .nomediaがある場合は常に直接スキャン（権限があれば正確にカウント）
+      if (hasNomediaFile || !_cachedAlbumMap!.containsKey(folderName)) {
+        log(
+          'Folder $folderPath has .nomedia or not in PhotoManager, using direct scan',
+        );
+        return await _countFilesDirectly(folderPath, hasFullAccess);
       }
 
-      // 直接ディレクトリスキャン（権限に依存せず試行）
-      final directory = Directory(folderPath);
-      if (await directory.exists()) {
-        int count = 0;
-        await for (final entity in directory.list(recursive: true)) {
-          if (entity is File) {
-            final fileName = entity.path.split('/').last;
-
-            // .nomediaファイルは除外
-            if (fileName == '.nomedia') {
-              continue;
-            }
-
-            // .nomediaファイルによってブロックされているかチェック
-            if (await _isBlockedByNomedia(entity.path)) {
-              continue;
-            }
-
-            final extension = entity.path.split('.').last.toLowerCase();
-            if ([
-              'jpg',
-              'jpeg',
-              'png',
-              'gif',
-              'bmp',
-              'webp',
-              'heic',
-              'heif',
-            ].contains(extension)) {
-              count++;
-            }
-          }
-        }
-        return count;
-      }
-
-      return 0;
+      // PhotoManagerでカウント可能な場合はそちらを使用
+      final album = _cachedAlbumMap![folderName]!;
+      return await album.assetCountAsync;
     } catch (e) {
       log('Error counting files in folder $folderPath: $e');
+      return 0;
+    }
+  }
+
+  /// 直接ディレクトリスキャンでファイル数をカウント
+  Future<int> _countFilesDirectly(String folderPath, bool hasFullAccess) async {
+    try {
+      final directory = Directory(folderPath);
+      if (!await directory.exists()) {
+        return 0;
+      }
+
+      int count = 0;
+      await for (final entity in directory.list(recursive: true)) {
+        if (entity is File) {
+          final fileName = entity.path.split('/').last;
+
+          // .nomediaファイルは除外
+          if (fileName == '.nomedia') {
+            continue;
+          }
+
+          // 権限がない場合のみ.nomediaブロックチェックを行う
+          if (!hasFullAccess && await _isBlockedByNomedia(entity.path)) {
+            continue;
+          }
+
+          final extension = entity.path.split('.').last.toLowerCase();
+          if ([
+            'jpg',
+            'jpeg',
+            'png',
+            'gif',
+            'bmp',
+            'webp',
+            'heic',
+            'heif',
+          ].contains(extension)) {
+            count++;
+          }
+        }
+      }
+      return count;
+    } catch (e) {
+      log('Error in direct file count for $folderPath: $e');
       return 0;
     }
   }

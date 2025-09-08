@@ -108,6 +108,10 @@ class SettingsProvider extends ChangeNotifier {
   bool _isAutoUpdateEnabled = true;
   bool get isAutoUpdateEnabled => _isAutoUpdateEnabled;
 
+  // 統計更新中フラグ
+  bool _isUpdatingStats = false;
+  bool get isUpdatingStats => _isUpdatingStats;
+
   // 前回のフォルダパスのスナップショット（変更検出用）
   List<String> _lastFolderPaths = [];
 
@@ -193,6 +197,13 @@ class SettingsProvider extends ChangeNotifier {
 
     // フォルダ統計を非同期で自動更新（UIブロックを避ける）
     _checkAndAutoUpdateFolderStats();
+
+    // フォルダ設定がある場合は初回統計を強制更新
+    if (_folderSettings.isNotEmpty) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        forceUpdateFolderStats();
+      });
+    }
 
     // 自動スクロール間隔の最小値制限
     if (_autoScrollInterval < 5) {
@@ -741,28 +752,41 @@ class SettingsProvider extends ChangeNotifier {
 
   /// フォルダ統計を更新
   Future<void> updateFolderStats() async {
-    final stats = <String, Map<String, int>>{};
+    if (_isUpdatingStats) return; // 重複実行を防ぐ
 
-    for (final folder in _folderSettings) {
-      try {
-        // 並列で統計を取得
-        final results = await Future.wait([
-          _imageRepository.getTotalFileCountInFolder(folder.path),
-          DatabaseHelper.instance.getTaggedImageCountInFolder(folder.path),
-        ]);
-
-        stats[folder.path] = {
-          'totalFiles': results[0],
-          'taggedFiles': results[1],
-        };
-      } catch (e) {
-        log('Error getting stats for folder ${folder.path}: $e');
-        stats[folder.path] = {'totalFiles': 0, 'taggedFiles': 0};
-      }
-    }
-
-    _folderStats = stats;
+    _isUpdatingStats = true;
     notifyListeners();
+
+    try {
+      final stats = <String, Map<String, int>>{};
+
+      for (final folder in _folderSettings) {
+        try {
+          // 並列で統計を取得
+          final results = await Future.wait([
+            _imageRepository.getTotalFileCountInFolder(folder.path),
+            DatabaseHelper.instance.getTaggedImageCountInFolder(folder.path),
+          ]);
+
+          stats[folder.path] = {
+            'totalFiles': results[0],
+            'taggedFiles': results[1],
+          };
+
+          log(
+            'Folder stats updated for ${folder.path}: totalFiles=${results[0]}, taggedFiles=${results[1]}',
+          );
+        } catch (e) {
+          log('Error getting stats for folder ${folder.path}: $e');
+          stats[folder.path] = {'totalFiles': 0, 'taggedFiles': 0};
+        }
+      }
+
+      _folderStats = stats;
+    } finally {
+      _isUpdatingStats = false;
+      notifyListeners();
+    }
   }
 
   /// フォルダパスの変更を検出して自動更新
@@ -775,9 +799,27 @@ class SettingsProvider extends ChangeNotifier {
     // 前回と比較して変更があった場合のみ更新
     if (_lastFolderPaths.join(',') != currentFolderPaths.join(',')) {
       _lastFolderPaths = currentFolderPaths;
+      log('Folder settings changed, triggering stats update');
       // 非同期で統計を更新（UIをブロックしない）
       updateFolderStats();
     }
+  }
+
+  /// 統計を強制的に更新（設定画面表示時など）
+  void forceUpdateFolderStats() {
+    if (!_isAutoUpdateEnabled) return;
+    log('Force updating folder stats');
+    updateFolderStats();
+  }
+
+  /// 権限変更後の統計更新（キャッシュクリア付き）
+  void updateFolderStatsAfterPermissionChange() {
+    if (!_isAutoUpdateEnabled) return;
+    log('Updating folder stats after permission change');
+    // ImageRepositoryのキャッシュをクリア
+    _imageRepository.clearCache();
+    // 統計を更新
+    updateFolderStats();
   }
 
   /// 自動更新の有効/無効を切り替え
