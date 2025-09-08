@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
@@ -104,13 +105,19 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
               key: ValueKey('vis_grid_$index'),
               onVisibilityChanged: (info) {
                 // 一定以上見えているもののみ採用（50%以上）
+                // 検索フィルタ等でdisplayItemsが更新され、indexが不正になるケースをガード
+                final itemsLen = widget.displayItems.length;
+                if (itemsLen == 0 || index >= itemsLen) {
+                  return; // 参照できるアイテムがない/インデックス不整合時は何もしない
+                }
+
                 if (info.visibleFraction >= 0.5) {
                   widget.onItemVisible?.call(index);
                   // 可視になったら高優先度で要求
-                  final item = widget.displayItems[index];
-                  if (item is File) {
+                  final currentItem = widget.displayItems[index];
+                  if (currentItem is File) {
                     thumbnailProvider.requestThumbnail(
-                      item.path,
+                      currentItem.path,
                       thumbnailSize,
                       height: null,
                       highQuality: false,
@@ -118,21 +125,24 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
                     );
                   }
                   // 可視範囲と前後のプリフェッチ更新
-                  thumbnailProvider.updateVisibleWindow(
-                    visibleIndices: _estimateVisibleIndices(index),
-                    items: widget.displayItems,
-                    width: thumbnailSize,
-                    height: null,
-                    highQuality: false,
-                  );
+                  if (itemsLen > 0) {
+                    thumbnailProvider.updateVisibleWindow(
+                      visibleIndices: _estimateVisibleIndices(index),
+                      items: widget.displayItems,
+                      width: thumbnailSize,
+                      height: null,
+                      highQuality: false,
+                    );
+                  }
                 } else if (info.visibleFraction == 0) {
                   // 完全に非表示になったらデプリオライズ
                   // FIXME: 直接の検索でエラー出ることがある
                   //  RangeError (RangeError (length): Invalid value: Only valid value is 0: 1)
-                  final item = widget.displayItems[index];
-                  if (item is File) {
+                  //  RangeError (RangeError (length): Invalid value: Valid value range is empty: 70)
+                  final currentItem = widget.displayItems[index];
+                  if (currentItem is File) {
                     thumbnailProvider.cancelOrDeprioritize(
-                      item.path,
+                      currentItem.path,
                       thumbnailSize,
                       height: null,
                       highQuality: false,
@@ -151,12 +161,15 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
 
   // 現在のindexを基点に可視範囲をざっくり推定（通常Gridでも十分）
   Iterable<int> _estimateVisibleIndices(int centerIndex) {
+    final len = widget.displayItems.length;
+    if (len <= 0) return const Iterable<int>.empty();
+    final last = len - 1;
     final radius = 30; // 少し広めに取る
-    final start = (centerIndex - radius).clamp(
-      0,
-      widget.displayItems.length - 1,
-    );
-    final end = (centerIndex + radius).clamp(0, widget.displayItems.length - 1);
+    // centerIndex が範囲外になっている場合に備えて丸める
+    final safeCenter = centerIndex.clamp(0, last);
+    final start = math.max(0, safeCenter - radius);
+    final end = math.min(last, safeCenter + radius);
+    if (start > end) return const Iterable<int>.empty();
     return List<int>.generate(end - start + 1, (i) => start + i);
   }
 
