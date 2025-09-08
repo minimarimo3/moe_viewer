@@ -137,9 +137,75 @@ class DuplicateService {
     for (final files in groups.values) {
       log('Deleting duplicates: $files');
       if (files.length <= 1) continue;
+      // 先頭のファイルを残し、その他を削除する前にタグをマージ
+      final keeper = files.isNotEmpty ? files[0] : null;
       // 最も古い/新しいなどのポリシーがあればここに実装。現状は先頭を残す。
       for (var i = 1; i < files.length; i++) {
         final path = files[i];
+
+        // 削除前にタグをマージ（keeper に統合）
+        try {
+          if (keeper != null) {
+            final db = DatabaseHelper.instance;
+            // 削除対象と保存対象のタグ（AIカテゴリ別と手動）を取得
+            final src = await db.getAllTagsWithCategoriesForPath(path);
+            final dest = await db.getAllTagsWithCategoriesForPath(keeper);
+
+            // マージ：AIタグ全体、キャラクタ、フィーチャ、手動タグを統合
+            final mergedAi = <String>{};
+            final mergedAiChar = <String>{};
+            final mergedAiFeat = <String>{};
+            final mergedManual = <String>{};
+
+            mergedAi.addAll((dest['ai'] as List<String>?) ?? <String>[]);
+            mergedAiChar.addAll(
+              (dest['aiCharacter'] as List<String>?) ?? <String>[],
+            );
+            mergedAiFeat.addAll(
+              (dest['aiFeature'] as List<String>?) ?? <String>[],
+            );
+            mergedManual.addAll(
+              (dest['manual'] as List<String>?) ?? <String>[],
+            );
+
+            mergedAi.addAll((src['ai'] as List<String>?) ?? <String>[]);
+            mergedAiChar.addAll(
+              (src['aiCharacter'] as List<String>?) ?? <String>[],
+            );
+            mergedAiFeat.addAll(
+              (src['aiFeature'] as List<String>?) ?? <String>[],
+            );
+            mergedManual.addAll((src['manual'] as List<String>?) ?? <String>[]);
+
+            // 予約タグの扱い: duplicate フラグは削除対象ファイルにあっても
+            // keeper に残す必要はないため除外する（既存のロジック維持）
+            mergedAi.removeWhere((t) => t == ReservedTags.duplicate);
+            mergedAiChar.removeWhere((t) => t == ReservedTags.duplicate);
+            mergedAiFeat.removeWhere((t) => t == ReservedTags.duplicate);
+            mergedManual.removeWhere((t) => t == ReservedTags.duplicate);
+
+            // DBに保存（分類済みタグを含めて置き換える）
+            await db.insertOrUpdateTagWithCategories(
+              keeper,
+              mergedAi.toList(),
+              mergedAiChar.toList(),
+              mergedAiFeat.toList(),
+            );
+
+            // 手動タグは manual_tags テーブルなので個別に反映
+            // まず既存手動タグを全て削除してから再追加する簡便な方法を取る
+            final existingManual = await db.getManualTagsForPath(keeper);
+            for (final t in existingManual) {
+              await db.removeManualTag(keeper, t);
+            }
+            for (final t in mergedManual) {
+              await db.addManualTag(keeper, t);
+            }
+          }
+        } catch (e) {
+          log('Failed to merge tags from $path into $keeper: $e');
+        }
+
         try {
           var removed = false;
 
