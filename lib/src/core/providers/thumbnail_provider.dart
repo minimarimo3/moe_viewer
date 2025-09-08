@@ -84,6 +84,23 @@ class ThumbnailProvider extends ChangeNotifier {
   // 可視ウィンドウ追跡（プリフェッチ制御用）
   Set<int> _visibleIndices = <int>{};
 
+  // 自動スクロール状態の追跡
+  bool _isAutoScrolling = false;
+
+  /// 自動スクロール状態を設定
+  void setAutoScrolling(bool isScrolling) {
+    if (_isAutoScrolling != isScrolling) {
+      _isAutoScrolling = isScrolling;
+      if (!_isAutoScrolling) {
+        // スクロール完了時にキューを再開
+        _pumpQueue();
+      }
+    }
+  }
+
+  /// 自動スクロール中かどうかを取得
+  bool get isAutoScrolling => _isAutoScrolling;
+
   // キャッシュキー生成
   static String makeKey(String filePath, int width, int? height, bool hq) {
     final h = height?.toString() ?? 'auto';
@@ -123,6 +140,11 @@ class ThumbnailProvider extends ChangeNotifier {
     if (cached != null) {
       // 念のため通知（新規購読者向け）
       notifyListeners();
+      return;
+    }
+
+    // 自動スクロール中はキューに追加しない（キャッシュにないサムネイルは保留）
+    if (_isAutoScrolling) {
       return;
     }
 
@@ -256,6 +278,11 @@ class ThumbnailProvider extends ChangeNotifier {
   }
 
   Future<void> _pumpQueue() async {
+    // 自動スクロール中は新しいタスクを開始しない
+    if (_isAutoScrolling) {
+      return;
+    }
+
     // 並列実行は pool が制御。ここでは可能な限り起動する。
     // ただし、頻繁な呼び出しによる同時起動を抑えるため、マイクロタスクに積む。
     scheduleMicrotask(() async {

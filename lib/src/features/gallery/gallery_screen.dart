@@ -82,6 +82,9 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   List<int> _activeFilterIndices = [];
   String? _lastCommittedQuery;
 
+  // 最後に読み込んだ表示フォルダのパススナップショット
+  List<String> _lastFolderPathsSnapshot = [];
+
   void _handleLongPress(dynamic item, Offset globalPosition) {
     // pie menu widget内でopenMenuForItemを呼び出すためのハンドラー
     log('--- _handleLongPress called ---');
@@ -204,8 +207,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       settings.setLastScrollIndex(index);
     }
 
-    // サムネイルのプリフェッチ・優先度更新
-    if (mounted) {
+    // サムネイルのプリフェッチ・優先度更新（自動スクロール中は更新しない）
+    if (mounted && !_restoringPosition) {
       final provider = context.read<ThumbnailProvider>();
       final crossAxisCount = settings.gridCrossAxisCount;
       if (crossAxisCount > 1) {
@@ -242,6 +245,24 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
     final settings = Provider.of<SettingsProvider>(context, listen: false);
 
+    // 表示対象フォルダが前回と変わっていれば、前回の閲覧位置をリセットする
+    final currentPaths = settings.folderSettings
+        .where((f) => f.isEnabled)
+        .map((f) => f.path)
+        .toList();
+    final pathsChanged =
+        _lastFolderPathsSnapshot.length != currentPaths.length ||
+        !_lastFolderPathsSnapshot.toSet().containsAll(currentPaths);
+    if (pathsChanged) {
+      // 非同期で保存されるため await しておく
+      await settings.setLastViewedImagePath(null);
+      await settings.setLastViewedAssetId(null);
+      await settings.setLastScrollIndex(0);
+      // 内部スナップショットは更新しておく（loadImages 成功時にも更新するが
+      // 今ここで更新しておくことで早期の変更検出を防ぐ）
+      _lastFolderPathsSnapshot = List.from(currentPaths);
+    }
+
     try {
       // タグの先読みを非同期で実行（UIをブロックしない）
       _loadTagsAsync();
@@ -273,6 +294,11 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
       // スクロール位置の復元も非同期で実行
       _restoreScrollPositionAsync(settings);
+      // 成功時に表示フォルダのスナップショットを確定
+      _lastFolderPathsSnapshot = settings.folderSettings
+          .where((f) => f.isEnabled)
+          .map((f) => f.path)
+          .toList();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -325,6 +351,13 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final targetIndex = _findIndexByLastViewed(settings);
+
+      // サムネイルプロバイダーに自動スクロール開始を通知
+      if (mounted) {
+        final thumbnailProvider = context.read<ThumbnailProvider>();
+        thumbnailProvider.setAutoScrolling(true);
+      }
+
       setState(() => _restoringPosition = true);
       try {
         if (targetIndex >= 0 && targetIndex < _displayItems.length) {
@@ -371,7 +404,13 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       } catch (e) {
         log('スクロール位置復元エラー: $e');
       } finally {
-        if (mounted) setState(() => _restoringPosition = false);
+        if (mounted) {
+          setState(() => _restoringPosition = false);
+
+          // サムネイルプロバイダーに自動スクロール終了を通知
+          final thumbnailProvider = context.read<ThumbnailProvider>();
+          thumbnailProvider.setAutoScrolling(false);
+        }
       }
     });
   }
@@ -959,6 +998,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   }
 
   Future<void> _shuffleImages() async {
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
     // 検索中/フィルタ中は「現在画面に表示されている項目のみ」をシャッフルする。
     final hasQuery = _isSearchMode && _searchController.text.trim().isNotEmpty;
     final hasActiveFilter = _isFilterActive;
@@ -999,7 +1039,6 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       );
 
       // シャッフル順序を保存
-      final settings = Provider.of<SettingsProvider>(context, listen: false);
       await settings.saveShuffleOrder(result.shuffleOrder);
 
       // UIを更新
@@ -1010,6 +1049,14 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     }
 
     _resetScrollAndFilters();
+    // シャッフルにより表示内容が大きく変わるため、前回位置は無効化する
+    await settings.setLastViewedImagePath(null);
+    await settings.setLastViewedAssetId(null);
+    await settings.setLastScrollIndex(0);
+    _lastFolderPathsSnapshot = settings.folderSettings
+        .where((f) => f.isEnabled)
+        .map((f) => f.path)
+        .toList();
     if (!mounted) return;
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     scaffoldMessenger.showSnackBar(
@@ -1026,6 +1073,14 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     await _loadImages();
 
     _resetScrollAndFilters();
+    // リセット時も同様に前回位置をクリア
+    await settings.setLastViewedImagePath(null);
+    await settings.setLastViewedAssetId(null);
+    await settings.setLastScrollIndex(0);
+    _lastFolderPathsSnapshot = settings.folderSettings
+        .where((f) => f.isEnabled)
+        .map((f) => f.path)
+        .toList();
     if (!mounted) return;
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     scaffoldMessenger.showSnackBar(
