@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../../core/services/database_helper.dart';
 import '../../../core/services/nsfw_service.dart';
 import '../../../core/utils/tag_category_utils.dart';
+import '../../../core/utils/search_navigator.dart';
 import 'tag_edit_dialog.dart';
 
 class TagViewDialog extends StatefulWidget {
@@ -191,7 +192,10 @@ class _TagViewDialogState extends State<TagViewDialog>
           onTap ??
           () {
             HapticFeedback.lightImpact();
-            // 将来的にここで検索機能を実装
+            // タグ名（表示名の別名を考慮）で検索結果を表示
+            final query = _getDisplayText(tag);
+            Navigator.of(context).pop(); // ダイアログを閉じる
+            SearchNavigator.openSearchResults(context, query: query);
           },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

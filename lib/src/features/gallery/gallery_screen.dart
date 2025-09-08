@@ -31,8 +31,10 @@ enum LoadingStatus {
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+  const MyHomePage({super.key, required this.title, this.initialSearchQuery});
   final String title;
+  // 設定画面やタグ一覧から検索結果を直接開くための初期クエリ
+  final String? initialSearchQuery;
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -81,6 +83,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   bool _isFilterActive = false;
   List<int> _activeFilterIndices = [];
   String? _lastCommittedQuery;
+  // 初期クエリの適用フラグ（多重適用防止）
+  bool _initialSearchApplied = false;
 
   // 最後に読み込んだ表示フォルダのパススナップショット
   List<String> _lastFolderPathsSnapshot = [];
@@ -296,6 +300,21 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       }
 
       log('合計 ${imageList.displayItems.length} 個のアイテムが見つかりました（詳細画面用リストも準備完了）。');
+
+      // 初期検索クエリが指定されていれば適用（1回だけ）
+      if (widget.initialSearchQuery != null && !_initialSearchApplied) {
+        try {
+          setState(() {
+            _isSearchMode = true;
+            _searchController.text = widget.initialSearchQuery!.trim();
+          });
+          await _commitSearch();
+        } catch (e) {
+          log('初期検索の適用エラー: $e');
+        } finally {
+          _initialSearchApplied = true;
+        }
+      }
 
       // スクロール位置の復元も非同期で実行
       _restoreScrollPositionAsync(settings);
