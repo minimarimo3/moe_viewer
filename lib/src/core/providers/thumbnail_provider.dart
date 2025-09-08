@@ -139,6 +139,15 @@ class ThumbnailProvider extends ChangeNotifier {
     final cached = _memoryCache[key];
     if (cached != null) {
       // 念のため通知（新規購読者向け）
+      /*
+      FIXME: 「お気に入り」に３枚以上登録すると
+      FlutterError (setState() or markNeedsBuild() called during build.
+This _InheritedProviderScope<ThumbnailProvider?> widget cannot be marked as needing to build because the framework is already in the process of building widgets. A widget can be marked as needing to be built during the build phase only if one of its ancestors is currently building. This exception is allowed because the framework builds parent widgets before children, which means a dirty descendant will always be built. Otherwise, the framework might not visit this widget during this build phase.
+The widget on which setState() or markNeedsBuild() was called was:
+  _InheritedProviderScope<ThumbnailProvider?>
+The widget which was currently being built when the offending call was made was:
+  _SelectionKeepAlive)
+      */
       notifyListeners();
       return;
     }

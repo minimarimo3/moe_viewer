@@ -35,6 +35,18 @@ class FileThumbnail extends StatelessWidget {
       shouldRebuild: (prev, next) => !identical(prev, next),
       builder: (context, bytes, _) {
         if (bytes == null) {
+          // サムネイルがキャッシュにない場合、生成リクエストを発行
+          final provider = Provider.of<ThumbnailProvider>(
+            context,
+            listen: false,
+          );
+          provider.requestThumbnail(
+            imageFile.path,
+            width,
+            height: height,
+            highQuality: highQuality,
+          );
+
           return Container(
             color: Colors.grey[200],
             child: const Center(
