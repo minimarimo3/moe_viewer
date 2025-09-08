@@ -18,6 +18,7 @@ class GalleryListWidget extends StatelessWidget {
   final VoidCallback? onEnterDetail;
   final VoidCallback? onScrollToEnd; // 遅延読み込み用コールバック
   final void Function(int index)? onItemVisible; // 可視アイテム通知（精度向上用）
+  final bool isLoadingMore; // 末尾ローディング表示
 
   const GalleryListWidget({
     super.key,
@@ -30,6 +31,7 @@ class GalleryListWidget extends StatelessWidget {
     this.onEnterDetail,
     this.onScrollToEnd,
     this.onItemVisible,
+    this.isLoadingMore = false,
   });
 
   Future<Size> getImageSize(File imageFile) {
@@ -148,10 +150,24 @@ class GalleryListWidget extends StatelessWidget {
       child: ScrollablePositionedList.builder(
         itemScrollController: itemScrollController,
         itemPositionsListener: itemPositionsListener,
-        itemCount: displayItems.length,
+        // ロード中は末尾にダミー行を足して、スクロールの慣性を途切れさせない
+        itemCount: displayItems.length + (isLoadingMore ? 1 : 0),
         addAutomaticKeepAlives: true,
         addRepaintBoundaries: false,
         itemBuilder: (context, index) {
+          // 末尾のローディング行
+          if (index >= displayItems.length) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
+          }
           final item = displayItems[index];
           return RepaintBoundary(
             child: VisibilityDetector(

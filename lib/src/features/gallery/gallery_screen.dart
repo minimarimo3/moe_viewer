@@ -54,6 +54,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   final ItemPositionsListener _itemPositionsListener =
       ItemPositionsListener.create();
   Timer? _debounce;
+  bool _isLoadingMoreUI = false; // 追加読み込み中（UI側）
 
   bool _restoringPosition = false;
   final GlobalKey<PieMenuWidgetState> _pieMenuKey =
@@ -285,6 +286,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   // 追加画像読み込み機能
   Future<void> _loadMoreImages() async {
     if (_status != LoadingStatus.completed) return;
+    if (_isLoadingMoreUI) return; // 多重起動防止（UI側）
+    setState(() => _isLoadingMoreUI = true);
 
     final settings = Provider.of<SettingsProvider>(context, listen: false);
 
@@ -306,6 +309,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       }
     } catch (e) {
       log('追加画像読み込みエラー: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingMoreUI = false);
     }
   }
 
@@ -611,6 +616,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                         onLongPress: _handleLongPress,
                         imageSizeFutureCache: _imageSizeFutureCache,
                         onScrollToEnd: _loadMoreImages, // 遅延読み込み追加
+                        isLoadingMore: _isLoadingMoreUI,
                         onItemVisible: (i) {
                           // フィルタや検索が効いている場合は、見かけのindexから元のindexへ逆マップ
                           final hasActiveFilter = _isFilterActive;
@@ -638,6 +644,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                         onLongPress: _handleLongPress,
                         onEnterDetail: () => _exitSearchMode(resetInput: false),
                         onScrollToEnd: _loadMoreImages, // 遅延読み込み追加
+                        isLoadingMore: _isLoadingMoreUI,
                         onItemVisible: (i) {
                           // グリッドも同様に逆マップ
                           final hasActiveFilter = _isFilterActive;

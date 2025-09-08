@@ -1,7 +1,5 @@
 import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -22,6 +20,7 @@ class GalleryGridWidget extends StatefulWidget {
   final void Function(int index, dynamic item)? onItemTap;
   final VoidCallback? onScrollToEnd; // 遅延読み込み用コールバック
   final void Function(int index)? onItemVisible; // 可視アイテム通知（精度向上用）
+  final bool? isLoadingMore; // 末尾ローディング表示
 
   const GalleryGridWidget({
     super.key,
@@ -34,6 +33,7 @@ class GalleryGridWidget extends StatefulWidget {
     this.onItemTap,
     this.onScrollToEnd,
     this.onItemVisible,
+    this.isLoadingMore,
   });
 
   @override
@@ -41,40 +41,18 @@ class GalleryGridWidget extends StatefulWidget {
 }
 
 class _GalleryGridWidgetState extends State<GalleryGridWidget> {
-  final Map<String, double> _aspectRatioCache = {};
-
-  // 画像のアスペクト比を取得
-  Future<double> _getImageAspectRatio(File imageFile) async {
-    final cacheKey = imageFile.path;
-    if (_aspectRatioCache.containsKey(cacheKey)) {
-      return _aspectRatioCache[cacheKey]!;
-    }
-
-    try {
-      final bytes = await imageFile.readAsBytes();
-      final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      final image = frame.image;
-
-      final aspectRatio = image.width / image.height;
-      _aspectRatioCache[cacheKey] = aspectRatio;
-
-      image.dispose();
-      codec.dispose();
-
-      return aspectRatio;
-    } catch (e) {
-      // エラーの場合はデフォルト比率を返す
-      return 1.0;
-    }
-  }
+  // 通常GridViewのため、セルは正方形ベース。アスペクト比の可変は行わない。
 
   @override
   Widget build(BuildContext context) {
     final thumbnailProvider = context.read<ThumbnailProvider>();
     final screenWidth = MediaQuery.of(context).size.width;
-    final itemWidth =
-        (screenWidth - (widget.crossAxisCount + 1) * 2) / widget.crossAxisCount;
+    // スペースは左右パディング2 + セル間隔(2) * (列数 - 1) を想定
+    const spacing = 2.0;
+    const horizontalPadding = 2.0;
+    final totalSpacing =
+        (widget.crossAxisCount - 1) * spacing + horizontalPadding * 2;
+    final itemWidth = (screenWidth - totalSpacing) / widget.crossAxisCount;
     final thumbnailSize = (itemWidth * MediaQuery.of(context).devicePixelRatio)
         .round();
 
@@ -88,79 +66,88 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
         }
         return false;
       },
-      child: CustomScrollView(
+      child: GridView.builder(
         controller: widget.autoScrollController,
         physics: const ClampingScrollPhysics(),
-        slivers: [
-          // 直接SliverMasonryGridを使い、スクロール座標系と一致させる
-          SliverMasonryGrid.count(
-            crossAxisCount: widget.crossAxisCount,
-            crossAxisSpacing: 2.0,
-            mainAxisSpacing: 2.0,
-            childCount: widget.displayItems.length,
-            itemBuilder: (context, index) {
-              final item = widget.displayItems[index];
-              // アイテム単位でAutoScrollTagを付与して精度を上げる
-              return AutoScrollTag(
-                key: ValueKey('auto_scroll_item_$index'),
-                controller: widget.autoScrollController,
-                index: index,
-                highlightColor: Colors.transparent,
-                child: VisibilityDetector(
-                  key: ValueKey('vis_grid_$index'),
-                  onVisibilityChanged: (info) {
-                    // 一定以上見えているもののみ採用（50%以上）
-                    if (info.visibleFraction >= 0.5) {
-                      widget.onItemVisible?.call(index);
-                      // 可視になったら高優先度で要求
-                      final item = widget.displayItems[index];
-                      if (item is File) {
-                        thumbnailProvider.requestThumbnail(
-                          item.path,
-                          thumbnailSize,
-                          height: null,
-                          highQuality: false,
-                          priority: ThumbnailPriority.high,
-                        );
-                      }
-                      // 可視範囲と前後のプリフェッチ更新
-                      thumbnailProvider.updateVisibleWindow(
-                        visibleIndices: _estimateVisibleIndices(index),
-                        items: widget.displayItems,
-                        width: thumbnailSize,
-                        height: null,
-                        highQuality: false,
-                      );
-                    } else if (info.visibleFraction == 0) {
-                      // 完全に非表示になったらデプリオライズ
-                      final item = widget.displayItems[index];
-                      if (item is File) {
-                        thumbnailProvider.cancelOrDeprioritize(
-                          item.path,
-                          thumbnailSize,
-                          height: null,
-                          highQuality: false,
-                          cancel: false,
-                        );
-                      }
-                    }
-                  },
-                  child: _buildFlexibleThumbnail(
-                    item,
-                    index,
-                    itemWidth,
-                    thumbnailSize,
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
+        padding: const EdgeInsets.all(horizontalPadding),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: widget.crossAxisCount,
+          crossAxisSpacing: spacing,
+          mainAxisSpacing: spacing,
+          childAspectRatio: 1.0, // 正方形セル
+        ),
+        // ロード中は末尾にローディングインジケータを1セル分追加
+        itemCount:
+            widget.displayItems.length +
+            ((widget.isLoadingMore ?? false) ? 1 : 0),
+        itemBuilder: (context, index) {
+          final isLoadingCell =
+              (widget.isLoadingMore ?? false) &&
+              index >= widget.displayItems.length;
+          if (isLoadingCell) {
+            return const Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          }
+          final item = widget.displayItems[index];
+          // アイテム単位でAutoScrollTagを付与
+          return AutoScrollTag(
+            key: ValueKey('auto_scroll_item_$index'),
+            controller: widget.autoScrollController,
+            index: index,
+            highlightColor: Colors.transparent,
+            child: VisibilityDetector(
+              key: ValueKey('vis_grid_$index'),
+              onVisibilityChanged: (info) {
+                // 一定以上見えているもののみ採用（50%以上）
+                if (info.visibleFraction >= 0.5) {
+                  widget.onItemVisible?.call(index);
+                  // 可視になったら高優先度で要求
+                  final item = widget.displayItems[index];
+                  if (item is File) {
+                    thumbnailProvider.requestThumbnail(
+                      item.path,
+                      thumbnailSize,
+                      height: null,
+                      highQuality: false,
+                      priority: ThumbnailPriority.high,
+                    );
+                  }
+                  // 可視範囲と前後のプリフェッチ更新
+                  thumbnailProvider.updateVisibleWindow(
+                    visibleIndices: _estimateVisibleIndices(index),
+                    items: widget.displayItems,
+                    width: thumbnailSize,
+                    height: null,
+                    highQuality: false,
+                  );
+                } else if (info.visibleFraction == 0) {
+                  // 完全に非表示になったらデプリオライズ
+                  final item = widget.displayItems[index];
+                  if (item is File) {
+                    thumbnailProvider.cancelOrDeprioritize(
+                      item.path,
+                      thumbnailSize,
+                      height: null,
+                      highQuality: false,
+                      cancel: false,
+                    );
+                  }
+                }
+              },
+              child: _buildGridThumbnail(item, index, itemWidth, thumbnailSize),
+            ),
+          );
+        },
       ),
     );
   }
 
-  // 現在のindexを基点に可視範囲をざっくり推定（Masonryでは完全に正しくないが簡易）
+  // 現在のindexを基点に可視範囲をざっくり推定（通常Gridでも十分）
   Iterable<int> _estimateVisibleIndices(int centerIndex) {
     final radius = 30; // 少し広めに取る
     final start = (centerIndex - radius).clamp(
@@ -171,7 +158,7 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
     return List<int>.generate(end - start + 1, (i) => start + i);
   }
 
-  Widget _buildFlexibleThumbnail(
+  Widget _buildGridThumbnail(
     dynamic item,
     int index,
     double maxItemWidth,
@@ -189,6 +176,7 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
         key: ValueKey('${item.path}_$thumbnailSize'),
         imageFile: item,
         width: thumbnailSize,
+        // Gridセルは正方形のため、縦横比維持でレターボックス表示
         preserveAspectRatio: true,
       );
     } else {
@@ -219,55 +207,8 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
       },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(4.0),
-        child: RepaintBoundary(
-          child: _buildAspectRatioWidget(item, thumbnailWidget, maxItemWidth),
-        ),
+        child: RepaintBoundary(child: thumbnailWidget),
       ),
     );
-  }
-
-  Widget _buildAspectRatioWidget(
-    dynamic item,
-    Widget thumbnailWidget,
-    double maxItemWidth,
-  ) {
-    if (item is AssetEntity) {
-      // AssetEntityの場合、実際のアスペクト比を使用
-      if (item.height > 0) {
-        final aspectRatio = item.width / item.height;
-        return AspectRatio(aspectRatio: aspectRatio, child: thumbnailWidget);
-      }
-    } else if (item is File) {
-      // Fileの場合、FutureBuilderでアスペクト比を取得
-      return FutureBuilder<double>(
-        future: _getImageAspectRatio(item),
-        builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            final aspectRatio = snapshot.data!;
-            return AspectRatio(
-              aspectRatio: aspectRatio,
-              child: thumbnailWidget,
-            );
-          }
-          // ロード中はデフォルトの比率を使用
-          return AspectRatio(
-            aspectRatio: 0.75,
-            child: Container(
-              color: Colors.grey[200],
-              child: const Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            ),
-          );
-        },
-      );
-    }
-
-    // デフォルトケース
-    return AspectRatio(aspectRatio: 1.0, child: thumbnailWidget);
   }
 }
