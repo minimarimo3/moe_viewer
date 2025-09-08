@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:photo_manager/photo_manager.dart';
 
 import 'package:xxh3/xxh3.dart';
 
@@ -131,21 +132,81 @@ class DuplicateService {
   /// 重複ファイルを削除（各グループで先頭1つを残し、それ以外を削除）
   /// 戻り値は削除したファイルパス一覧。
   Future<List<String>> deleteDuplicates(DuplicateMap groups) async {
+    // TODO: 削除対象のタグを保存する側のタグにも反映させる
     final deleted = <String>[];
     for (final files in groups.values) {
+      log('Deleting duplicates: $files');
       if (files.length <= 1) continue;
       // 最も古い/新しいなどのポリシーがあればここに実装。現状は先頭を残す。
       for (var i = 1; i < files.length; i++) {
-        final f = File(files[i]);
+        final path = files[i];
         try {
+          var removed = false;
+
+          // まず PhotoManager を使って削除を試みる（platform の権限下で安全に削除できることがある）
+          try {
+            // PhotoManager 側でこのパスに対応する AssetEntity を探す
+            final albums = await PhotoManager.getAssetPathList(hasAll: true);
+            String? foundId;
+            for (final album in albums) {
+              // 少数ファイルの探索を最適化するため範囲指定で取得
+              final total = await album.assetCountAsync;
+              const pageSize = 200;
+              for (var start = 0; start < total; start += pageSize) {
+                final end = (start + pageSize) > total
+                    ? total - 1
+                    : (start + pageSize - 1);
+                final list = await album.getAssetListRange(
+                  start: start,
+                  end: end,
+                );
+                for (final a in list) {
+                  try {
+                    final file = await a.file;
+                    if (file != null && file.path == path) {
+                      foundId = a.id;
+                      break;
+                    }
+                  } catch (_) {
+                    // ignore file access errors per-asset
+                  }
+                }
+                if (foundId != null) break;
+              }
+              if (foundId != null) break;
+            }
+
+            if (foundId != null) {
+              final dynamic result = await PhotoManager.editor.deleteWithIds([
+                foundId,
+              ]);
+              if (result == true || (result is List && result.isNotEmpty)) {
+                deleted.add(path);
+                await DatabaseHelper.instance.purgeAllForPath(path);
+                log(
+                  'Deleted duplicate via PhotoManager: $path (assetId=$foundId)',
+                );
+                removed = true;
+              }
+            }
+          } catch (e) {
+            // PhotoManager 削除が例外を投げる場合はフォールバックする
+            log('PhotoManager delete failed for $path: $e');
+          }
+
+          if (removed) continue;
+
+          // フォールバック: File.delete を試す
+          final f = File(path);
           if (await f.exists()) {
             await f.delete();
             deleted.add(f.path);
             // DBの付随情報もクリーンアップ
             await DatabaseHelper.instance.purgeAllForPath(f.path);
+            log('Deleted duplicate file: ${f.path}');
           }
         } catch (e) {
-          log('Failed to delete ${f.path}: $e');
+          log('Failed to delete $path: $e');
         }
       }
     }
