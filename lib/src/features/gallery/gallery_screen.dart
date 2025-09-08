@@ -261,6 +261,11 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       // 内部スナップショットは更新しておく（loadImages 成功時にも更新するが
       // 今ここで更新しておくことで早期の変更検出を防ぐ）
       _lastFolderPathsSnapshot = List.from(currentPaths);
+
+      // フォルダパスが変更された場合、フォルダ統計も自動更新
+      if (settings.isAutoUpdateEnabled) {
+        settings.updateFolderStats();
+      }
     }
 
     try {

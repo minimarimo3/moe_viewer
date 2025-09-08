@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:developer';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -64,6 +65,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (path.contains(dir)) return false;
     }
     return true;
+  }
+
+  Future<bool> _hasNomediaFile(String directoryPath) async {
+    try {
+      final directory = Directory(directoryPath);
+      if (!await directory.exists()) {
+        return false;
+      }
+
+      final nomediaFile = File('$directoryPath/.nomedia');
+      return await nomediaFile.exists();
+    } catch (e) {
+      return false;
+    }
   }
 
   Future<void> _checkFullAccessPermission() async {
@@ -137,119 +152,147 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
 
               for (FolderSetting folder in settings.folderSettings)
-                ListTile(
-                  leading: _isRestrictedPath(folder.path) && !_hasFullAccess
-                      ? Tooltip(
-                          message: 'このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。',
-                          child: Icon(
-                            Icons.warning_amber_rounded,
-                            color: Colors.orange,
-                          ),
-                        )
-                      : Icon(Icons.folder_outlined),
-                  title: Text(
-                    folder.path.split('/').last,
-                    style: TextStyle(
-                      color: (_isRestrictedPath(folder.path) && !_hasFullAccess)
-                          ? Theme.of(context).disabledColor
-                          : null,
-                    ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(folder.path, style: TextStyle(fontSize: 12)),
-                      const SizedBox(height: 2),
-                      Builder(
-                        builder: (context) {
-                          final stats = settings.getFolderStat(folder.path);
-                          final totalFiles = stats['totalFiles'] ?? 0;
-                          final taggedFiles = stats['taggedFiles'] ?? 0;
-                          return Text(
-                            'ファイル数: $totalFiles  |  タグ付け済み: $taggedFiles',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Theme.of(
-                                context,
-                              ).textTheme.bodySmall?.color,
-                            ),
-                          );
-                        },
+                FutureBuilder<bool>(
+                  future: _hasNomediaFile(folder.path),
+                  builder: (context, nomediaSnapshot) {
+                    final hasNomedia = nomediaSnapshot.data ?? false;
+                    final isRestricted = _isRestrictedPath(folder.path);
+                    final needsPermission =
+                        (isRestricted || hasNomedia) && !_hasFullAccess;
+
+                    String tooltipMessage;
+                    String dialogContent;
+                    if (hasNomedia) {
+                      tooltipMessage =
+                          'このフォルダには.nomediaファイルがあります。「すべてのフォルダをスキャンする」権限の許可が必要です。';
+                      dialogContent =
+                          'このフォルダには.nomediaファイルがあり、システムから隠されています。\n\n'
+                          'このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。\n\n'
+                          'この権限を許可すると、OSの標準アルバム以外の、あらゆる場所にある画像フォルダをアプリで表示できるようになります。';
+                    } else {
+                      tooltipMessage =
+                          'このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。';
+                      dialogContent =
+                          'このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。\n\n'
+                          'この権限を許可すると、OSの標準アルバム以外の、あらゆる場所にある画像フォルダをアプリで表示できるようになります。';
+                    }
+
+                    return ListTile(
+                      leading: needsPermission
+                          ? Tooltip(
+                              message: tooltipMessage,
+                              child: Icon(
+                                hasNomedia
+                                    ? Icons.visibility_off
+                                    : Icons.warning_amber_rounded,
+                                color: hasNomedia ? Colors.red : Colors.orange,
+                              ),
+                            )
+                          : Icon(Icons.folder_outlined),
+                      title: Text(
+                        folder.path.split('/').last,
+                        style: TextStyle(
+                          color: needsPermission
+                              ? Theme.of(context).disabledColor
+                              : null,
+                        ),
                       ),
-                    ],
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (folder.isDeletable)
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (BuildContext context) {
-                                // ③ builderの中でAlertDialogを返す
-                                return AlertDialog(
-                                  title: const Text('フォルダの削除'),
-                                  content: Text(
-                                    '「${folder.path}」の表示を解除しますか？\n（フォルダ内の画像ファイルは削除されません）',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.of(context).pop(),
-                                      child: const Text('キャンセル'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.of(context).pop();
-                                        settings.removeFolder(folder.path);
-                                      },
-                                      child: const Text('解除する'),
-                                    ),
-                                  ],
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(folder.path, style: TextStyle(fontSize: 12)),
+                          const SizedBox(height: 2),
+                          Builder(
+                            builder: (context) {
+                              final stats = settings.getFolderStat(folder.path);
+                              final totalFiles = stats['totalFiles'] ?? 0;
+                              final taggedFiles = stats['taggedFiles'] ?? 0;
+                              return Text(
+                                'ファイル数: $totalFiles  |  タグ付け済み: $taggedFiles',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(
+                                    context,
+                                  ).textTheme.bodySmall?.color,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (folder.isDeletable)
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (BuildContext context) {
+                                    return AlertDialog(
+                                      title: const Text('フォルダの削除'),
+                                      content: Text(
+                                        '「${folder.path}」の表示を解除しますか？\n（フォルダ内の画像ファイルは削除されません）',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(),
+                                          child: const Text('キャンセル'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () {
+                                            Navigator.of(context).pop();
+                                            settings.removeFolder(folder.path);
+                                          },
+                                          child: const Text('解除する'),
+                                        ),
+                                      ],
+                                    );
+                                  },
                                 );
                               },
-                            );
-                          },
-                        ),
+                            ),
 
-                      Checkbox(
-                        value: folder.isEnabled,
-                        onChanged: (bool? value) {
-                          if (value != null) {
-                            settings.toggleFolderEnabled(folder.path);
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                  onTap: () async {
-                    if (_isRestrictedPath(folder.path) && !_hasFullAccess) {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('追加の権限が必要です'),
-                          content: const SingleChildScrollView(
-                            child: Text(
-                              'このフォルダのスキャンには「すべてのフォルダをスキャンする」権限の許可が必要です。\n\n'
-                              'この権限を許可すると、OSの標準アルバム以外の、あらゆる場所にある画像フォルダをアプリで表示できるようになります。',
-                            ),
+                          Checkbox(
+                            value: folder.isEnabled,
+                            onChanged: (bool? value) {
+                              if (value != null) {
+                                settings.toggleFolderEnabled(folder.path);
+                              }
+                            },
                           ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text('キャンセル'),
+                        ],
+                      ),
+                      onTap: () async {
+                        if (needsPermission) {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('追加の権限が必要です'),
+                              content: SingleChildScrollView(
+                                child: Text(dialogContent),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(context).pop(false),
+                                  child: const Text('キャンセル'),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(context).pop(true),
+                                  child: const Text('許可する'),
+                                ),
+                              ],
                             ),
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text('許可する'),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirm == true) await _requestFullAccessPermission();
-                    }
+                          );
+                          if (confirm == true)
+                            await _requestFullAccessPermission();
+                        }
+                      },
+                    );
                   },
                 ),
               ListTile(
@@ -264,8 +307,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.refresh),
-                title: const Text('フォルダ統計を更新'),
-                subtitle: const Text('ファイル数とタグ付け済み画像数を再計算します'),
+                title: const Text('フォルダ統計を手動更新'),
                 onTap: () async {
                   final navigator = Navigator.of(context);
                   final scaffoldMessenger = ScaffoldMessenger.of(context);

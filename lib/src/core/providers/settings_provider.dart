@@ -104,6 +104,13 @@ class SettingsProvider extends ChangeNotifier {
   Map<String, Map<String, int>> _folderStats = {};
   Map<String, Map<String, int>> get folderStats => _folderStats;
 
+  // フォルダ統計の自動更新制御
+  bool _isAutoUpdateEnabled = true;
+  bool get isAutoUpdateEnabled => _isAutoUpdateEnabled;
+
+  // 前回のフォルダパスのスナップショット（変更検出用）
+  List<String> _lastFolderPaths = [];
+
   List<int>? _shuffleOrder;
   List<int>? get shuffleOrder => _shuffleOrder;
 
@@ -167,6 +174,7 @@ class SettingsProvider extends ChangeNotifier {
         (_) => 'middle',
       ),
       _settingsRepository.loadAutoScrollInterval().catchError((_) => 30),
+      _settingsRepository.loadIsAutoUpdateEnabled().catchError((_) => true),
     ]);
 
     _selectedModelId = results[0] as String;
@@ -181,9 +189,10 @@ class SettingsProvider extends ChangeNotifier {
     _lastViewedAssetId = results[9] as String?;
     _gridScrollPreferPosition = results[10] as String;
     _autoScrollInterval = results[11] as int;
+    _isAutoUpdateEnabled = results[12] as bool;
 
-    // フォルダ統計を非同期で更新（UIブロックを避ける）
-    updateFolderStats();
+    // フォルダ統計を非同期で自動更新（UIブロックを避ける）
+    _checkAndAutoUpdateFolderStats();
 
     // 自動スクロール間隔の最小値制限
     if (_autoScrollInterval < 5) {
@@ -668,8 +677,8 @@ class SettingsProvider extends ChangeNotifier {
     if (!_folderSettings.any((f) => f.path == newPath)) {
       _folderSettings.add(FolderSetting(path: newPath));
       await _saveFolders();
-      // フォルダ統計を更新
-      updateFolderStats();
+      // フォルダ統計を自動更新
+      _checkAndAutoUpdateFolderStats();
     }
     // 重い処理は非同期で実行
     _updateProgressAsync();
@@ -679,6 +688,8 @@ class SettingsProvider extends ChangeNotifier {
     _folderSettings.removeWhere((f) => f.path == path);
     _folderStats.remove(path); // 統計からも削除
     await _saveFolders();
+    // フォルダ統計を自動更新
+    _checkAndAutoUpdateFolderStats();
     notifyListeners();
     // 重い処理は非同期で実行
     _updateProgressAsync();
@@ -688,6 +699,8 @@ class SettingsProvider extends ChangeNotifier {
     final folder = _folderSettings.firstWhere((f) => f.path == path);
     folder.isEnabled = !folder.isEnabled;
     await _saveFolders();
+    // フォルダ統計を自動更新
+    _checkAndAutoUpdateFolderStats();
     notifyListeners();
     // 重い処理は非同期で実行
     _updateProgressAsync();
@@ -749,6 +762,28 @@ class SettingsProvider extends ChangeNotifier {
     }
 
     _folderStats = stats;
+    notifyListeners();
+  }
+
+  /// フォルダパスの変更を検出して自動更新
+  void _checkAndAutoUpdateFolderStats() {
+    if (!_isAutoUpdateEnabled) return;
+
+    final currentFolderPaths = _folderSettings.map((f) => f.path).toList()
+      ..sort();
+
+    // 前回と比較して変更があった場合のみ更新
+    if (_lastFolderPaths.join(',') != currentFolderPaths.join(',')) {
+      _lastFolderPaths = currentFolderPaths;
+      // 非同期で統計を更新（UIをブロックしない）
+      updateFolderStats();
+    }
+  }
+
+  /// 自動更新の有効/無効を切り替え
+  void setAutoUpdateEnabled(bool enabled) async {
+    _isAutoUpdateEnabled = enabled;
+    await _settingsRepository.saveIsAutoUpdateEnabled(enabled);
     notifyListeners();
   }
 

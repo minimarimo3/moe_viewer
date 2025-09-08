@@ -20,6 +20,7 @@ class SettingsRepository {
       'grid_scroll_prefer_position'; // 'begin' | 'middle' | 'end'
   static const String _visibleRatingsKey = 'visible_ratings';
   static const String _autoScrollIntervalKey = 'auto_scroll_interval';
+  static const String _isAutoUpdateEnabledKey = 'is_auto_update_enabled';
 
   Future<void> saveFolderSettings(List<FolderSetting> folderSettings) async {
     final prefs = await SharedPreferencesHelper.instance;
@@ -196,5 +197,16 @@ class SettingsRepository {
   Future<int> loadAutoScrollInterval() async {
     final prefs = await SharedPreferencesHelper.instance;
     return prefs.getInt(_autoScrollIntervalKey) ?? 30; // デフォルト3秒
+  }
+
+  // --- Auto update settings ---
+  Future<void> saveIsAutoUpdateEnabled(bool isEnabled) async {
+    final prefs = await SharedPreferencesHelper.instance;
+    await prefs.setBool(_isAutoUpdateEnabledKey, isEnabled);
+  }
+
+  Future<bool> loadIsAutoUpdateEnabled() async {
+    final prefs = await SharedPreferencesHelper.instance;
+    return prefs.getBool(_isAutoUpdateEnabledKey) ?? true; // デフォルト有効
   }
 }
