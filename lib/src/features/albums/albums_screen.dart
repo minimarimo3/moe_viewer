@@ -93,7 +93,15 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
           });
         }
       } catch (e) {
-        _filesCacheLoading[album.id] = false;
+        dev.log('アルバム ${album.name} (ID: ${album.id}) のファイル取得に失敗: $e');
+        if (mounted) {
+          setState(() {
+            _filesCache[album.id] = <File>[]; // エラー時は空のリストを設定
+            _filesCacheLoading[album.id] = false;
+          });
+        } else {
+          _filesCacheLoading[album.id] = false;
+        }
       }
     }
   }
