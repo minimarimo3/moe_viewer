@@ -733,4 +733,16 @@ class DatabaseHelper {
     );
     return Sqflite.firstIntValue(result) ?? 0;
   }
+
+  /// 指定パスに関連するレコードをすべて削除（ファイル削除時のクリーンアップ用）
+  Future<void> purgeAllForPath(String path) async {
+    final db = await instance.database;
+    final batch = db.batch();
+    batch.delete('image_tags', where: 'path = ?', whereArgs: [path]);
+    batch.delete('manual_tags', where: 'path = ?', whereArgs: [path]);
+    batch.delete('deleted_ai_tags', where: 'path = ?', whereArgs: [path]);
+    batch.delete('nsfw_ratings', where: 'path = ?', whereArgs: [path]);
+    batch.delete('album_items', where: 'path = ?', whereArgs: [path]);
+    await batch.commit(noResult: true);
+  }
 }

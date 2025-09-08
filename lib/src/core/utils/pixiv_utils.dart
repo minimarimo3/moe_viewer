@@ -30,6 +30,7 @@ class ReservedTags {
   static const String favorite = '__favorite__';
   static const String nsfw = '__nsfw__';
   static const String sfw = '__sfw__';
+  static const String duplicate = '__duplicate__';
   // 将来: '__hidden__', '__archived__' などを追加予定
 
   /// タグリストにお気に入りフラグを付与/除去
@@ -104,6 +105,12 @@ class ReservedTags {
       await db.setTagAlias(sfw, 'U18');
       await db.setTagAlias(sfw, 'U-18');
     }
+
+    // 重複タグの別名を設定
+    final existingDuplicateAlias = await db.getTagAlias(duplicate);
+    if (existingDuplicateAlias == null) {
+      await db.setTagAlias(duplicate, '重複');
+    }
   }
 
   /// レガシー機能：後方互換性のため残すが、新しい仕組みに移行
@@ -126,6 +133,11 @@ class ReservedTags {
       return sfw;
     }
 
+    // 重複エイリアス対応
+    if (k == '重複') {
+      return duplicate;
+    }
+
     return k;
   }
 
@@ -139,8 +151,8 @@ class ReservedTags {
     final q = inputLastToken.trim().toLowerCase();
     if (q.isEmpty) return const [];
 
-    // 「お気に入り」のサジェスト
-    const aliases = ['お気に入り'];
+    // 予約タグのサジェスト（必要に応じて拡張）
+    const aliases = ['お気に入り', '重複'];
     return aliases.where((a) => a.toLowerCase().contains(q)).toList();
   }
 }

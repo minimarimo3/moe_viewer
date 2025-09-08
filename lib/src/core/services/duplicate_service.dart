@@ -6,6 +6,8 @@ import 'dart:typed_data';
 import 'package:xxh3/xxh3.dart';
 
 import '../models/folder_setting.dart';
+import '../services/database_helper.dart';
+import '../utils/pixiv_utils.dart';
 
 typedef DuplicateMap = Map<String, List<String>>; // hash -> [filePaths]
 
@@ -109,5 +111,44 @@ class DuplicateService {
       await raf.close();
     }
     return state.digest();
+  }
+
+  /// 重複と判断されたファイルに予約タグ `__duplicate__` を付与する。
+  Future<void> tagDuplicates(DuplicateMap groups) async {
+    final db = DatabaseHelper.instance;
+    for (final files in groups.values) {
+      for (final path in files) {
+        await db.editTags(path, (tags) {
+          if (!tags.contains(ReservedTags.duplicate)) {
+            tags.add(ReservedTags.duplicate);
+          }
+          return tags;
+        });
+      }
+    }
+  }
+
+  /// 重複ファイルを削除（各グループで先頭1つを残し、それ以外を削除）
+  /// 戻り値は削除したファイルパス一覧。
+  Future<List<String>> deleteDuplicates(DuplicateMap groups) async {
+    final deleted = <String>[];
+    for (final files in groups.values) {
+      if (files.length <= 1) continue;
+      // 最も古い/新しいなどのポリシーがあればここに実装。現状は先頭を残す。
+      for (var i = 1; i < files.length; i++) {
+        final f = File(files[i]);
+        try {
+          if (await f.exists()) {
+            await f.delete();
+            deleted.add(f.path);
+            // DBの付随情報もクリーンアップ
+            await DatabaseHelper.instance.purgeAllForPath(f.path);
+          }
+        } catch (e) {
+          log('Failed to delete ${f.path}: $e');
+        }
+      }
+    }
+    return deleted;
   }
 }

@@ -12,6 +12,8 @@ import '../../common_widgets/dialogs.dart';
 import '../../common_widgets/auto_scroll_interval_selector.dart';
 import '../../core/services/ai_service.dart';
 import '../../core/services/duplicate_service.dart';
+import '../../core/utils/pixiv_utils.dart';
+import '../../core/utils/search_navigator.dart';
 import '../../core/models/ai_model_definition.dart';
 import '../../core/models/folder_setting.dart';
 import '../../core/models/rating.dart';
@@ -432,11 +434,99 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       0,
                       (p, e) => p + e.length,
                     );
-                    showInfoDialog(
-                      context,
-                      title: '重複を検出しました',
-                      content:
-                          '重複グループ: $totalGroups\n重複ファイル合計: $totalFiles\n\n詳細な削除や整理は今後のアップデートで対応予定です。',
+
+                    // __duplicate__ タグを付与
+                    await duplicateService.tagDuplicates(groups);
+
+                    if (!context.mounted) return;
+                    // 選択肢を提示
+                    // ignore: use_build_context_synchronously
+                    showModalBottomSheet<void>(
+                      context: context,
+                      showDragHandle: true,
+                      builder: (ctx) {
+                        return SafeArea(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ListTile(
+                                leading: const Icon(Icons.search),
+                                title: const Text('重複ファイルを確認する'),
+                                subtitle: Text(
+                                  '重複グループ: $totalGroups / ファイル: $totalFiles',
+                                ),
+                                onTap: () async {
+                                  Navigator.of(ctx).pop();
+                                  await SearchNavigator.openSearchResults(
+                                    context,
+                                    query: ReservedTags.duplicate,
+                                  );
+                                },
+                              ),
+                              const Divider(height: 0),
+                              ListTile(
+                                leading: const Icon(
+                                  Icons.delete_forever,
+                                  color: Colors.red,
+                                ),
+                                title: const Text(
+                                  '削除する',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle: const Text('各グループで1つだけ残し、他を削除します'),
+                                onTap: () async {
+                                  Navigator.of(ctx).pop();
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (c) => AlertDialog(
+                                      title: const Text('重複ファイルの削除'),
+                                      content: Text(
+                                        '重複グループ: $totalGroups\n対象ファイル: $totalFiles\n\n各グループで1つを残し、他を削除します。よろしいですか？',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(c).pop(false),
+                                          child: const Text('キャンセル'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(c).pop(true),
+                                          child: const Text('削除する'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirm != true) return;
+
+                                  final deleted = await duplicateService
+                                      .deleteDuplicates(groups);
+                                  if (!context.mounted) return;
+                                  showInfoDialog(
+                                    context,
+                                    title: '削除完了',
+                                    content: '削除したファイル数: ${deleted.length}',
+                                  );
+                                  // 統計を更新
+                                  if (deleted.isNotEmpty) {
+                                    settings.updateFolderStats();
+                                  }
+                                },
+                              ),
+                              const Divider(height: 0),
+                              ListTile(
+                                leading: const Icon(Icons.close),
+                                title: const Text('キャンセル'),
+                                onTap: () => Navigator.of(ctx).pop(),
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                          ),
+                        );
+                      },
                     );
                   }
                 },
