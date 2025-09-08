@@ -11,7 +11,7 @@ import '../services/nsfw_service.dart';
 
 class ImageRepository {
   static const int _batchSize = 200; // バッチサイズを増やして効率化
-  static const int _initialLoadCount = 100; // 初期表示用の画像数
+  static const int _initialLoadCount = 10000; // 初期表示用の画像数
 
   // キャッシュ用
   List<AssetPathEntity>? _cachedAlbums;

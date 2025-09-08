@@ -82,19 +82,6 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   List<int> _activeFilterIndices = [];
   String? _lastCommittedQuery;
 
-  // 設定値から AutoScrollPosition を決定
-  AutoScrollPosition _resolveAutoScrollPosition(String name) {
-    switch (name) {
-      case 'begin':
-        return AutoScrollPosition.begin;
-      case 'end':
-        return AutoScrollPosition.end;
-      case 'middle':
-      default:
-        return AutoScrollPosition.middle;
-    }
-  }
-
   void _handleLongPress(dynamic item, Offset globalPosition) {
     // pie menu widget内でopenMenuForItemを呼び出すためのハンドラー
     log('--- _handleLongPress called ---');
@@ -337,134 +324,54 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   void _restoreScrollPositionAsync(SettingsProvider settings) {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      // AssetId > Path > 旧しおり index の順で復元
       final targetIndex = _findIndexByLastViewed(settings);
-      if (targetIndex >= 0 && targetIndex < _displayItems.length) {
-        try {
-          setState(() => _restoringPosition = true);
-
+      setState(() => _restoringPosition = true);
+      try {
+        if (targetIndex >= 0 && targetIndex < _displayItems.length) {
           if (settings.gridCrossAxisCount > 1 &&
               _autoScrollController.hasClients) {
-            // グリッド表示の場合：アイテム単位でスクロール（AutoScrollTagをアイテムに付与）
-            final prefer = _resolveAutoScrollPosition(
-              Provider.of<SettingsProvider>(
-                context,
-                listen: false,
-              ).gridScrollPreferPosition,
-            );
+            // グリッド表示：preferPositionはbegin固定でズレを防ぐ
             await _autoScrollController.scrollToIndex(
               targetIndex,
-              preferPosition: prefer,
+              preferPosition: AutoScrollPosition.begin,
               duration: const Duration(milliseconds: 600),
             );
-
-            // スクロール完了後、微調整のために少し待機
-            await Future.delayed(const Duration(milliseconds: 200));
-
-            // レイアウトが落ち着いた後に、ごく短い補正スクロールで位置ずれを解消
-            try {
-              await _autoScrollController.scrollToIndex(
-                targetIndex,
-                preferPosition: AutoScrollPosition.begin,
-                duration: const Duration(milliseconds: 1),
-              );
-            } catch (_) {}
-
-            if (mounted) {
-              setState(() => _restoringPosition = false);
-            }
           } else if (settings.gridCrossAxisCount == 1 &&
               _itemScrollController.isAttached) {
-            // リスト表示の場合：アニメーションスクロール＋アライメント指定で精度を向上
-            try {
-              await _itemScrollController.scrollTo(
-                index: targetIndex,
-                duration: const Duration(milliseconds: 450),
-                curve: Curves.easeOutCubic,
-                alignment: 0.0, // 先頭合わせ
-              );
-              // 微調整（ごく短時間の再スクロール）
-              await _itemScrollController.scrollTo(
-                index: targetIndex,
-                duration: const Duration(milliseconds: 1),
-                alignment: 0.0,
-              );
-            } catch (_) {
-              // scrollTo未対応状態などのフォールバック
-              try {
-                _itemScrollController.jumpTo(index: targetIndex);
-              } catch (_) {}
-            }
-            if (mounted) setState(() => _restoringPosition = false);
-          } else {
-            setState(() => _restoringPosition = false);
+            // リスト表示：alignment=0.0で先頭に揃える
+            await _itemScrollController.scrollTo(
+              index: targetIndex,
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeOutCubic,
+              alignment: 0.0,
+            );
           }
-        } catch (e) {
-          log('スクロール位置復元エラー: $e');
-          if (mounted) setState(() => _restoringPosition = false);
-        }
-      } else {
-        // 旧しおり index フォールバック
-        final index = settings.lastScrollIndex;
-        if (index > 0 && index < _displayItems.length) {
-          try {
-            setState(() => _restoringPosition = true);
+        } else {
+          // 旧しおり index フォールバック
+          final index = settings.lastScrollIndex;
+          if (index > 0 && index < _displayItems.length) {
             if (settings.gridCrossAxisCount > 1 &&
                 _autoScrollController.hasClients) {
-              final prefer = _resolveAutoScrollPosition(
-                Provider.of<SettingsProvider>(
-                  context,
-                  listen: false,
-                ).gridScrollPreferPosition,
-              );
               await _autoScrollController.scrollToIndex(
                 index,
-                preferPosition: prefer,
+                preferPosition: AutoScrollPosition.begin,
                 duration: const Duration(milliseconds: 600),
               );
-
-              await Future.delayed(const Duration(milliseconds: 200));
-
-              // 微補正
-              try {
-                await _autoScrollController.scrollToIndex(
-                  index,
-                  preferPosition: AutoScrollPosition.begin,
-                  duration: const Duration(milliseconds: 1),
-                );
-              } catch (_) {}
-
-              if (mounted) {
-                setState(() => _restoringPosition = false);
-              }
             } else if (settings.gridCrossAxisCount == 1 &&
                 _itemScrollController.isAttached) {
-              try {
-                await _itemScrollController.scrollTo(
-                  index: index,
-                  duration: const Duration(milliseconds: 450),
-                  curve: Curves.easeOutCubic,
-                  alignment: 0.0,
-                );
-                await _itemScrollController.scrollTo(
-                  index: index,
-                  duration: const Duration(milliseconds: 1),
-                  alignment: 0.0,
-                );
-              } catch (_) {
-                try {
-                  _itemScrollController.jumpTo(index: index);
-                } catch (_) {}
-              }
-              if (mounted) setState(() => _restoringPosition = false);
-            } else {
-              setState(() => _restoringPosition = false);
+              await _itemScrollController.scrollTo(
+                index: index,
+                duration: const Duration(milliseconds: 450),
+                curve: Curves.easeOutCubic,
+                alignment: 0.0,
+              );
             }
-          } catch (e) {
-            log('スクロール位置復元エラー: $e');
-            if (mounted) setState(() => _restoringPosition = false);
           }
         }
+      } catch (e) {
+        log('スクロール位置復元エラー: $e');
+      } finally {
+        if (mounted) setState(() => _restoringPosition = false);
       }
     });
   }
