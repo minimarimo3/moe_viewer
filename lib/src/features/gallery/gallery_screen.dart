@@ -14,7 +14,7 @@ import '../../core/providers/settings_provider.dart';
 import '../../core/repositories/image_repository.dart';
 import '../../core/services/database_helper.dart';
 import '../../common_widgets/pie_menu_widget.dart';
-import 'widgets/gallery_grid_widget_new.dart';
+import 'widgets/gallery_grid_widget.dart';
 import 'widgets/gallery_list_widget.dart';
 import 'utils/gallery_shuffle_utils.dart';
 import '../albums/albums_screen.dart';
@@ -1068,7 +1068,12 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     // シャッフル状態を先にクリア
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     await settings.clearShuffleOrder();
-    // リセット時も同様に前回位置をクリア（読み込み前に行う）
+
+    // 元の画像データを再読み込み
+    await _loadImages();
+
+    _resetScrollAndFilters();
+    // リセット時も同様に前回位置をクリア
     await settings.setLastViewedImagePath(null);
     await settings.setLastViewedAssetId(null);
     await settings.setLastScrollIndex(0);
@@ -1076,11 +1081,6 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         .where((f) => f.isEnabled)
         .map((f) => f.path)
         .toList();
-
-    // 元の画像データを再読み込み
-    await _loadImages();
-
-    _resetScrollAndFilters();
     if (!mounted) return;
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     scaffoldMessenger.showSnackBar(
