@@ -198,28 +198,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                             )
                           : Icon(Icons.folder_outlined),
-                      title: Text(
-                        folder.path.split('/').last,
-                        style: TextStyle(
-                          color: needsPermission
-                              ? Theme.of(context).disabledColor
-                              : null,
-                        ),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(folder.path, style: TextStyle(fontSize: 12)),
-                          const SizedBox(height: 2),
-                          Builder(
-                            builder: (context) {
-                              final stats = settings.getFolderStat(folder.path);
-                              final totalFiles = stats['totalFiles'] ?? 0;
-                              final taggedFiles = stats['taggedFiles'] ?? 0;
-                              final isUpdating = settings.isUpdatingStats;
+                      title: Builder(
+                        builder: (context) {
+                          final stats = settings.getFolderStat(folder.path);
+                          final totalFiles = stats['totalFiles'] ?? 0;
+                          final taggedFiles = stats['taggedFiles'] ?? 0;
+                          final isUpdating = settings.isUpdatingStats;
 
-                              if (isUpdating && totalFiles == 0) {
-                                return Row(
+                          final folderName = folder.path.split('/').last;
+                          final titleColor = needsPermission
+                              ? Theme.of(context).disabledColor
+                              : null;
+
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  folderName,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(color: titleColor),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              if (isUpdating && totalFiles == 0)
+                                Row(
                                   children: [
                                     SizedBox(
                                       width: 12,
@@ -234,7 +236,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             ),
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
+                                    const SizedBox(width: 6),
                                     Text(
                                       'スキャン中...',
                                       style: TextStyle(
@@ -245,21 +247,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       ),
                                     ),
                                   ],
-                                );
-                              }
-
-                              return Text(
-                                'ファイル数: $totalFiles  |  タグ付け済み: $taggedFiles',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Theme.of(
-                                    context,
-                                  ).textTheme.bodySmall?.color,
+                                )
+                              else
+                                Text(
+                                  '（ファイル数: $totalFiles  |  タグ付け済み: $taggedFiles）',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall?.color,
+                                  ),
                                 ),
-                              );
-                            },
-                          ),
-                        ],
+                            ],
+                          );
+                        },
+                      ),
+                      subtitle: Text(
+                        folder.path,
+                        style: TextStyle(fontSize: 12),
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
