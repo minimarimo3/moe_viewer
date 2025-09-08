@@ -13,6 +13,11 @@
 			"label": "Flutter run (debug)",
 			"type": "shell",
 			"command": "flutter --no-version-check analyze"
+		},
+		{
+			"label": "Flutter run (debug)",
+			"type": "shell",
+			"command": "flutter --no-version-check pub get"
 		}
 	]
 }

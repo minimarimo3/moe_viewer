@@ -11,6 +11,7 @@ import '../../core/providers/settings_provider.dart';
 import '../../common_widgets/dialogs.dart';
 import '../../common_widgets/auto_scroll_interval_selector.dart';
 import '../../core/services/ai_service.dart';
+import '../../core/services/duplicate_service.dart';
 import '../../core/models/ai_model_definition.dart';
 import '../../core/models/folder_setting.dart';
 import '../../core/models/rating.dart';
@@ -349,6 +350,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   String? result = await FilePicker.platform.getDirectoryPath();
                   if (result != null) {
                     settings.addFolder(result);
+                  }
+                },
+              ),
+
+              const Divider(),
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  'メンテナンス',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+
+              ListTile(
+                leading: const Icon(Icons.copy_all_outlined),
+                title: const Text('重複画像をチェック'),
+                subtitle: const Text('XXH3ハッシュで同一画像を検出します'),
+                onTap: () async {
+                  final duplicateService = context.read<DuplicateService>();
+                  bool canceled = false;
+                  final scannedVN = ValueNotifier<int>(0);
+                  final dupVN = ValueNotifier<int>(0);
+
+                  // 進捗ダイアログ
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (ctx) {
+                      return AlertDialog(
+                        title: const Text('重複チェック中...'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const LinearProgressIndicator(),
+                            const SizedBox(height: 12),
+                            ValueListenableBuilder<int>(
+                              valueListenable: scannedVN,
+                              builder: (_, v, __) => Text('スキャン済み: $v'),
+                            ),
+                            ValueListenableBuilder<int>(
+                              valueListenable: dupVN,
+                              builder: (_, v, __) => Text('重複候補ファイル数: $v'),
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              canceled = true;
+                            },
+                            child: const Text('中止'),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+
+                  final groups = await duplicateService.findDuplicates(
+                    settings.folderSettings,
+                    onProgress: (scanned, dup) {
+                      scannedVN.value = scanned;
+                      dupVN.value = dup;
+                    },
+                    shouldCancel: () => canceled,
+                  );
+
+                  if (context.mounted) Navigator.of(context).pop(); // 進捗を閉じる
+
+                  if (!context.mounted) return;
+                  if (groups.isEmpty) {
+                    showInfoDialog(
+                      context,
+                      title: '重複なし',
+                      content: '重複画像は見つかりませんでした。',
+                    );
+                  } else {
+                    final totalGroups = groups.length;
+                    final totalFiles = groups.values.fold<int>(
+                      0,
+                      (p, e) => p + e.length,
+                    );
+                    showInfoDialog(
+                      context,
+                      title: '重複を検出しました',
+                      content:
+                          '重複グループ: $totalGroups\n重複ファイル合計: $totalFiles\n\n詳細な削除や整理は今後のアップデートで対応予定です。',
+                    );
                   }
                 },
               ),

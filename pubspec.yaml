@@ -86,6 +86,8 @@ dependencies:
   visibility_detector: ^0.4.0+2
   # 汎用キャッシュマネージャ（自前ディスクキャッシュを置き換え）
   flutter_cache_manager: ^3.4.1
+  # 重複検出用の高速ハッシュ（XXH3）
+  xxh3: ^1.2.0
 
 dev_dependencies:
   flutter_test:

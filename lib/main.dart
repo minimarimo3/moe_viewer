@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'src/core/providers/settings_provider.dart';
 import 'src/core/providers/thumbnail_provider.dart';
 import 'src/core/services/ai_service.dart';
+import 'src/core/services/duplicate_service.dart';
 import 'src/core/ui/app_themes.dart';
 import 'src/core/utils/pixiv_utils.dart';
 import 'src/features/dispatch/dispatch_screen.dart';
@@ -25,6 +26,7 @@ void main() async {
           create: (_) => AiService(),
           dispose: (_, aiService) => aiService.dispose(),
         ),
+        Provider(create: (_) => DuplicateService()),
       ],
       child: const MyApp(),
     ),

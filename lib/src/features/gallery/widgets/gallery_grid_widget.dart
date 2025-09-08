@@ -127,6 +127,8 @@ class _GalleryGridWidgetState extends State<GalleryGridWidget> {
                   );
                 } else if (info.visibleFraction == 0) {
                   // 完全に非表示になったらデプリオライズ
+                  // FIXME: 直接の検索でエラー出ることがある
+                  //  RangeError (RangeError (length): Invalid value: Only valid value is 0: 1)
                   final item = widget.displayItems[index];
                   if (item is File) {
                     thumbnailProvider.cancelOrDeprioritize(
