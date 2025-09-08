@@ -94,6 +94,8 @@ class SettingsProvider extends ChangeNotifier {
 
   String? _lastViewedImagePath;
   String? get lastViewedImagePath => _lastViewedImagePath;
+  String? _lastViewedAssetId; // PhotoManager の安定ID
+  String? get lastViewedAssetId => _lastViewedAssetId;
 
   List<FolderSetting> _folderSettings = [];
   List<FolderSetting> get folderSettings => _folderSettings;
@@ -160,6 +162,7 @@ class SettingsProvider extends ChangeNotifier {
       settingsFutures[7], // visibleRatings
       // エラー処理が必要な設定は個別に処理
       _settingsRepository.loadLastViewedImagePath().catchError((_) => null),
+      _settingsRepository.loadLastViewedAssetId().catchError((_) => null),
       _settingsRepository.loadGridScrollPreferPosition().catchError(
         (_) => 'middle',
       ),
@@ -175,8 +178,9 @@ class SettingsProvider extends ChangeNotifier {
     _shuffleOrder = results[6] as List<int>?;
     _visibleRatings = results[7] as Map<Rating, bool>;
     _lastViewedImagePath = results[8] as String?;
-    _gridScrollPreferPosition = results[9] as String;
-    _autoScrollInterval = results[10] as int;
+    _lastViewedAssetId = results[9] as String?;
+    _gridScrollPreferPosition = results[10] as String;
+    _autoScrollInterval = results[11] as int;
 
     // フォルダ統計を非同期で更新（UIブロックを避ける）
     updateFolderStats();
@@ -247,6 +251,15 @@ class SettingsProvider extends ChangeNotifier {
       await _settingsRepository.saveLastViewedImagePath(imagePath);
     } catch (e) {
       log('Error saving last viewed image path: $e');
+    }
+  }
+
+  Future<void> setLastViewedAssetId(String? assetId) async {
+    _lastViewedAssetId = assetId;
+    try {
+      await _settingsRepository.saveLastViewedAssetId(assetId);
+    } catch (e) {
+      log('Error saving last viewed asset id: $e');
     }
   }
 

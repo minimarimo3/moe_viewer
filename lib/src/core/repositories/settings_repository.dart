@@ -14,6 +14,7 @@ class SettingsRepository {
   static const String _themeModeKey = 'theme_mode';
   static const String _lastScrollIndexKey = 'last_scroll_index';
   static const String _lastViewedImagePathKey = 'last_viewed_image_path';
+  static const String _lastViewedAssetIdKey = 'last_viewed_asset_id';
   static const String _shuffleOrderKey = 'shuffle_order';
   static const String _gridScrollPreferPositionKey =
       'grid_scroll_prefer_position'; // 'begin' | 'middle' | 'end'
@@ -101,6 +102,21 @@ class SettingsRepository {
   Future<String?> loadLastViewedImagePath() async {
     final prefs = await SharedPreferencesHelper.instance;
     return prefs.getString(_lastViewedImagePathKey);
+  }
+
+  // --- Last viewed asset (stable id for PhotoManager assets) ---
+  Future<void> saveLastViewedAssetId(String? assetId) async {
+    final prefs = await SharedPreferencesHelper.instance;
+    if (assetId != null && assetId.isNotEmpty) {
+      await prefs.setString(_lastViewedAssetIdKey, assetId);
+    } else {
+      await prefs.remove(_lastViewedAssetIdKey);
+    }
+  }
+
+  Future<String?> loadLastViewedAssetId() async {
+    final prefs = await SharedPreferencesHelper.instance;
+    return prefs.getString(_lastViewedAssetIdKey);
   }
 
   Future<void> saveNsfwFilter(bool isEnabled) async {

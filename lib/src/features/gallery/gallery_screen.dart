@@ -7,6 +7,7 @@ import 'package:flutter/services.dart'; // ★★★ SystemChromeのためにイ
 import 'package:provider/provider.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:photo_manager/photo_manager.dart';
 
 import '../settings/settings_screen.dart';
 import '../../core/providers/settings_provider.dart';
@@ -199,9 +200,20 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     if (index < 0 || index >= _imageFilesForDetail.length) return;
     final path = _imageFilesForDetail[index].path;
     final settings = Provider.of<SettingsProvider>(context, listen: false);
+    // 可能なら表示アイテムが AssetEntity かを確認して安定IDも保存
+    String? assetId;
+    if (index >= 0 && index < _displayItems.length) {
+      final item = _displayItems[index];
+      if (item is AssetEntity) {
+        assetId = item.id;
+      }
+    }
     if (path != settings.lastViewedImagePath) {
       settings.setLastViewedImagePath(path);
-      // 互換のためインデックスもしおりとして併用
+      settings.setLastViewedAssetId(assetId);
+      settings.setLastScrollIndex(index);
+    } else if (assetId != null && assetId != settings.lastViewedAssetId) {
+      settings.setLastViewedAssetId(assetId);
       settings.setLastScrollIndex(index);
     }
 
@@ -325,148 +337,74 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   void _restoreScrollPositionAsync(SettingsProvider settings) {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      // AssetId > Path > 旧しおり index の順で復元
+      final targetIndex = _findIndexByLastViewed(settings);
+      if (targetIndex >= 0 && targetIndex < _displayItems.length) {
+        try {
+          setState(() => _restoringPosition = true);
 
-      final lastImagePath = settings.lastViewedImagePath;
-      if (lastImagePath != null && _imageFilesForDetail.isNotEmpty) {
-        // 最新の画像パスから対応するインデックスを検索
-        int targetIndex = -1;
-        for (int i = 0; i < _imageFilesForDetail.length; i++) {
-          if (_imageFilesForDetail[i].path == lastImagePath) {
-            targetIndex = i;
-            break;
-          }
-        }
+          if (settings.gridCrossAxisCount > 1 &&
+              _autoScrollController.hasClients) {
+            // グリッド表示の場合：アイテム単位でスクロール（AutoScrollTagをアイテムに付与）
+            final prefer = _resolveAutoScrollPosition(
+              Provider.of<SettingsProvider>(
+                context,
+                listen: false,
+              ).gridScrollPreferPosition,
+            );
+            await _autoScrollController.scrollToIndex(
+              targetIndex,
+              preferPosition: prefer,
+              duration: const Duration(milliseconds: 600),
+            );
 
-        // 対象の画像が見つかった場合、その位置にスクロール
-        if (targetIndex >= 0 && targetIndex < _displayItems.length) {
-          try {
-            setState(() => _restoringPosition = true);
+            // スクロール完了後、微調整のために少し待機
+            await Future.delayed(const Duration(milliseconds: 200));
 
-            if (settings.gridCrossAxisCount > 1 &&
-                _autoScrollController.hasClients) {
-              // グリッド表示の場合：アイテム単位でスクロール（AutoScrollTagをアイテムに付与）
-              final prefer = _resolveAutoScrollPosition(
-                Provider.of<SettingsProvider>(
-                  context,
-                  listen: false,
-                ).gridScrollPreferPosition,
-              );
+            // レイアウトが落ち着いた後に、ごく短い補正スクロールで位置ずれを解消
+            try {
               await _autoScrollController.scrollToIndex(
                 targetIndex,
-                preferPosition: prefer,
-                duration: const Duration(milliseconds: 600),
+                preferPosition: AutoScrollPosition.begin,
+                duration: const Duration(milliseconds: 1),
               );
+            } catch (_) {}
 
-              // スクロール完了後、微調整のために少し待機
-              await Future.delayed(const Duration(milliseconds: 200));
-
-              // レイアウトが落ち着いた後に、ごく短い補正スクロールで位置ずれを解消
-              try {
-                await _autoScrollController.scrollToIndex(
-                  targetIndex,
-                  preferPosition: AutoScrollPosition.begin,
-                  duration: const Duration(milliseconds: 1),
-                );
-              } catch (_) {}
-
-              if (mounted) {
-                setState(() => _restoringPosition = false);
-              }
-            } else if (settings.gridCrossAxisCount == 1 &&
-                _itemScrollController.isAttached) {
-              // リスト表示の場合：アニメーションスクロール＋アライメント指定で精度を向上
-              try {
-                await _itemScrollController.scrollTo(
-                  index: targetIndex,
-                  duration: const Duration(milliseconds: 450),
-                  curve: Curves.easeOutCubic,
-                  alignment: 0.0, // 先頭合わせ
-                );
-                // 微調整（ごく短時間の再スクロール）
-                await _itemScrollController.scrollTo(
-                  index: targetIndex,
-                  duration: const Duration(milliseconds: 1),
-                  alignment: 0.0,
-                );
-              } catch (_) {
-                // scrollTo未対応状態などのフォールバック
-                try {
-                  _itemScrollController.jumpTo(index: targetIndex);
-                } catch (_) {}
-              }
-              if (mounted) setState(() => _restoringPosition = false);
-            } else {
+            if (mounted) {
               setState(() => _restoringPosition = false);
             }
-          } catch (e) {
-            log('スクロール位置復元エラー: $e');
-            if (mounted) setState(() => _restoringPosition = false);
-          }
-        } else {
-          // 対象の画像が見つからない場合は、従来の方式（インデックスベース）でフォールバック
-          final index = settings.lastScrollIndex;
-          if (index > 0 && index < _displayItems.length) {
+          } else if (settings.gridCrossAxisCount == 1 &&
+              _itemScrollController.isAttached) {
+            // リスト表示の場合：アニメーションスクロール＋アライメント指定で精度を向上
             try {
-              setState(() => _restoringPosition = true);
-              if (settings.gridCrossAxisCount > 1 &&
-                  _autoScrollController.hasClients) {
-                final prefer = _resolveAutoScrollPosition(
-                  Provider.of<SettingsProvider>(
-                    context,
-                    listen: false,
-                  ).gridScrollPreferPosition,
-                );
-                await _autoScrollController.scrollToIndex(
-                  index,
-                  preferPosition: prefer,
-                  duration: const Duration(milliseconds: 600),
-                );
-
-                await Future.delayed(const Duration(milliseconds: 200));
-
-                // 微補正
-                try {
-                  await _autoScrollController.scrollToIndex(
-                    index,
-                    preferPosition: AutoScrollPosition.begin,
-                    duration: const Duration(milliseconds: 1),
-                  );
-                } catch (_) {}
-
-                if (mounted) {
-                  setState(() => _restoringPosition = false);
-                }
-              } else if (settings.gridCrossAxisCount == 1 &&
-                  _itemScrollController.isAttached) {
-                try {
-                  await _itemScrollController.scrollTo(
-                    index: index,
-                    duration: const Duration(milliseconds: 450),
-                    curve: Curves.easeOutCubic,
-                    alignment: 0.0,
-                  );
-                  await _itemScrollController.scrollTo(
-                    index: index,
-                    duration: const Duration(milliseconds: 1),
-                    alignment: 0.0,
-                  );
-                } catch (_) {
-                  try {
-                    _itemScrollController.jumpTo(index: index);
-                  } catch (_) {}
-                }
-                if (mounted) setState(() => _restoringPosition = false);
-              } else {
-                setState(() => _restoringPosition = false);
-              }
-            } catch (e) {
-              log('フォールバックスクロール位置復元エラー: $e');
-              if (mounted) setState(() => _restoringPosition = false);
+              await _itemScrollController.scrollTo(
+                index: targetIndex,
+                duration: const Duration(milliseconds: 450),
+                curve: Curves.easeOutCubic,
+                alignment: 0.0, // 先頭合わせ
+              );
+              // 微調整（ごく短時間の再スクロール）
+              await _itemScrollController.scrollTo(
+                index: targetIndex,
+                duration: const Duration(milliseconds: 1),
+                alignment: 0.0,
+              );
+            } catch (_) {
+              // scrollTo未対応状態などのフォールバック
+              try {
+                _itemScrollController.jumpTo(index: targetIndex);
+              } catch (_) {}
             }
+            if (mounted) setState(() => _restoringPosition = false);
+          } else {
+            setState(() => _restoringPosition = false);
           }
+        } catch (e) {
+          log('スクロール位置復元エラー: $e');
+          if (mounted) setState(() => _restoringPosition = false);
         }
       } else {
-        // 最新画像パスがない場合は従来の方式でフォールバック
+        // 旧しおり index フォールバック
         final index = settings.lastScrollIndex;
         if (index > 0 && index < _displayItems.length) {
           try {
@@ -529,6 +467,29 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         }
       }
     });
+  }
+
+  int _findIndexByLastViewed(SettingsProvider settings) {
+    // 1) AssetId で優先検索
+    final lastAssetId = settings.lastViewedAssetId;
+    if (lastAssetId != null && _displayItems.isNotEmpty) {
+      for (int i = 0; i < _displayItems.length; i++) {
+        final item = _displayItems[i];
+        if (item is AssetEntity && item.id == lastAssetId) {
+          return i;
+        }
+      }
+    }
+    // 2) パスで検索
+    final lastPath = settings.lastViewedImagePath;
+    if (lastPath != null && _imageFilesForDetail.isNotEmpty) {
+      for (int i = 0; i < _imageFilesForDetail.length; i++) {
+        if (_imageFilesForDetail[i].path == lastPath) {
+          return i;
+        }
+      }
+    }
+    return -1;
   }
 
   @override
