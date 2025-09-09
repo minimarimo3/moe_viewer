@@ -16,6 +16,7 @@ import '../../core/services/database_helper.dart';
 import '../../common_widgets/pie_menu_widget.dart';
 import 'widgets/gallery_grid_widget.dart';
 import 'widgets/gallery_list_widget.dart';
+import 'widgets/fullscreen_search_overlay.dart';
 import 'utils/gallery_shuffle_utils.dart';
 import '../albums/albums_screen.dart';
 import '../../common_widgets/dialogs.dart';
@@ -70,15 +71,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   double _lastScrollOffset = 0.0;
 
   // 検索状態
-  bool _isSearchMode = false;
-  final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
-  // 検索により絞り込まれた index リスト（detailFiles のインデックスを保持）
-  List<int> _filteredDetailIndices = [];
-  // サジェスト関連
-  List<String> _allTags = [];
-  List<String> _suggestions = [];
-  OverlayEntry? _suggestionsOverlay;
   // 検索結果の固定（Enter確定）
   bool _isFilterActive = false;
   List<int> _activeFilterIndices = [];
@@ -151,8 +144,6 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     _debounce?.cancel();
     _appBarAnimationController.dispose();
     _searchDebounce?.cancel();
-    _searchController.dispose();
-    _removeSuggestionsOverlay();
     // ※ PopScopeを使用するため、removeScopedWillPopCallbackは不要
     super.dispose();
   }
@@ -273,8 +264,10 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     }
 
     try {
-      // タグの先読みを非同期で実行（UIをブロックしない）
-      _loadTagsAsync();
+      // 初期検索クエリの処理用データベースアクセスを非同期で準備
+      if (widget.initialSearchQuery?.isNotEmpty ?? false) {
+        // この場合のみ非同期で検索処理を開始
+      }
 
       final imageList = await _imageRepository.getAllImages(
         settings.folderSettings,
@@ -289,9 +282,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         _status = _displayItems.isEmpty
             ? LoadingStatus.empty
             : LoadingStatus.completed;
-        // 通常モードに戻す（ここでは直接代入して二重setStateを避ける）
-        _isSearchMode = false;
-        _filteredDetailIndices = [];
+        // 通常モードに戻す（フルスクリーンオーバーレイ使用により検索モードなし）
       });
 
       // シャッフル状態の復元
@@ -304,11 +295,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       // 初期検索クエリが指定されていれば適用（1回だけ）
       if (widget.initialSearchQuery != null && !_initialSearchApplied) {
         try {
-          setState(() {
-            _isSearchMode = true;
-            _searchController.text = widget.initialSearchQuery!.trim();
-          });
-          await _commitSearch();
+          await _applyInitialSearch(widget.initialSearchQuery!.trim());
         } catch (e) {
           log('初期検索の適用エラー: $e');
         } finally {
@@ -363,12 +350,101 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     }
   }
 
-  void _loadTagsAsync() async {
-    try {
-      _allTags = await _db.getAllTags();
-    } catch (e) {
-      log('タグ読み込みエラー: $e');
+  Future<void> _applyInitialSearch(String query) async {
+    if (query.isEmpty) return;
+
+    // スペース区切りでAND検索
+    final tokens = query.split(RegExp(r"\s+"));
+
+    // 別名を考慮して検索する：各トークンについて、元のタグ名と別名の両方で検索
+    final expandedTokens = <String>[];
+    for (final token in tokens) {
+      expandedTokens.add(token); // 元のトークン
+      // 別名があるタグも検索対象に追加
+      final matchedTags = await _db.searchTagsByDisplayName(token);
+      expandedTokens.addAll(matchedTags);
     }
+
+    // DBからパスのヒットリストを取得
+    final hitPaths = await _db.searchByTags(expandedTokens);
+    // 現在の detailFiles のインデックスに変換
+    final hitSet = hitPaths.toSet();
+    final indices = <int>[];
+    for (var i = 0; i < _imageFilesForDetail.length; i++) {
+      final p = _imageFilesForDetail[i].path;
+      if (hitSet.contains(p)) indices.add(i);
+    }
+    setState(() {
+      _isFilterActive = true;
+      _activeFilterIndices = indices;
+      _lastCommittedQuery = query;
+    });
+  }
+
+  void _clearCommittedFilter() {
+    setState(() {
+      _isFilterActive = false;
+      _activeFilterIndices = [];
+      _lastCommittedQuery = null;
+    });
+  }
+
+  void _showSearchOverlay() {
+    final initialQuery = _isFilterActive ? (_lastCommittedQuery ?? '') : '';
+
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            FullscreenSearchOverlay(
+              initialQuery: initialQuery,
+              onSearchChanged: _handleSearchChanged,
+              onSearchCommitted: _handleSearchCommitted,
+              onClose: () => Navigator.of(context).pop(),
+            ),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+      ),
+    );
+  }
+
+  void _handleSearchChanged(String query) {
+    // リアルタイム検索の処理（必要に応じて実装）
+    // 現在は確定時のみ検索を実行
+  }
+
+  Future<void> _handleSearchCommitted(String query) async {
+    if (query.trim().isEmpty) {
+      _clearCommittedFilter();
+      return;
+    }
+
+    // スペース区切りでAND検索
+    final tokens = query.trim().split(RegExp(r"\s+"));
+
+    // 別名を考慮して検索する：各トークンについて、元のタグ名と別名の両方で検索
+    final expandedTokens = <String>[];
+    for (final token in tokens) {
+      expandedTokens.add(token); // 元のトークン
+      // 別名があるタグも検索対象に追加
+      final matchedTags = await _db.searchTagsByDisplayName(token);
+      expandedTokens.addAll(matchedTags);
+    }
+
+    // DBからパスのヒットリストを取得
+    final hitPaths = await _db.searchByTags(expandedTokens);
+    // 現在の detailFiles のインデックスに変換
+    final hitSet = hitPaths.toSet();
+    final indices = <int>[];
+    for (var i = 0; i < _imageFilesForDetail.length; i++) {
+      final p = _imageFilesForDetail[i].path;
+      if (hitSet.contains(p)) indices.add(i);
+    }
+
+    setState(() {
+      _isFilterActive = true;
+      _activeFilterIndices = indices;
+      _lastCommittedQuery = query.trim();
+    });
   }
 
   void _restoreScrollPositionAsync(SettingsProvider settings) {
@@ -473,26 +549,21 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       // 以前はグリッド表示 (crossAxisCount > 1) のときに強制的に表示していたが、
       // グリッドでもスクロールで非表示にしたいためその動作を削除する。
 
-      // 有効な検索（Enter確定）や入力中の検索を反映
+      // 有効な検索（Enter確定）を反映
       final hasActiveFilter = _isFilterActive;
-      final hasQuery =
-          _isSearchMode && _searchController.text.trim().isNotEmpty;
       List<int> indices;
       if (hasActiveFilter) {
         indices = _activeFilterIndices;
-      } else if (hasQuery) {
-        indices = _filteredDetailIndices;
       } else {
         indices = const [];
       }
-      final effectiveDisplayItems = (hasActiveFilter || hasQuery)
+      final effectiveDisplayItems = hasActiveFilter
           ? indices.map((i) => _displayItems[i]).toList()
           : _displayItems;
-      final effectiveDetailFiles = (hasActiveFilter || hasQuery)
+      final effectiveDetailFiles = hasActiveFilter
           ? indices.map((i) => _imageFilesForDetail[i]).toList()
           : _imageFilesForDetail;
-      final showingEmpty =
-          (hasActiveFilter || hasQuery) && effectiveDisplayItems.isEmpty;
+      final showingEmpty = hasActiveFilter && effectiveDisplayItems.isEmpty;
 
       switch (_status) {
         case LoadingStatus.loading:
@@ -543,25 +614,20 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                         imageFilesForDetail: effectiveDetailFiles,
                         itemScrollController: _itemScrollController,
                         itemPositionsListener: _itemPositionsListener,
-                        onEnterDetail: () => _exitSearchMode(resetInput: false),
+                        onEnterDetail: () {
+                          // 詳細画面入場時の処理
+                        },
                         onLongPress: _handleLongPress,
                         imageSizeFutureCache: _imageSizeFutureCache,
                         onScrollToEnd: _loadMoreImages, // 遅延読み込み追加
                         isLoadingMore: _isLoadingMoreUI,
                         onItemVisible: (i) {
-                          // フィルタや検索が効いている場合は、見かけのindexから元のindexへ逆マップ
+                          // フィルタが効いている場合は、見かけのindexから元のindexへ逆マップ
                           final hasActiveFilter = _isFilterActive;
-                          final hasQuery =
-                              _isSearchMode &&
-                              _searchController.text.trim().isNotEmpty;
                           int originalIndex = i;
                           if (hasActiveFilter) {
                             if (i >= 0 && i < _activeFilterIndices.length) {
                               originalIndex = _activeFilterIndices[i];
-                            }
-                          } else if (hasQuery) {
-                            if (i >= 0 && i < _filteredDetailIndices.length) {
-                              originalIndex = _filteredDetailIndices[i];
                             }
                           }
                           _onItemVisible(originalIndex);
@@ -573,23 +639,18 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                         crossAxisCount: crossAxisCount,
                         autoScrollController: _autoScrollController,
                         onLongPress: _handleLongPress,
-                        onEnterDetail: () => _exitSearchMode(resetInput: false),
+                        onEnterDetail: () {
+                          // 詳細画面入場時の処理
+                        },
                         onScrollToEnd: _loadMoreImages, // 遅延読み込み追加
                         isLoadingMore: _isLoadingMoreUI,
                         onItemVisible: (i) {
                           // グリッドも同様に逆マップ
                           final hasActiveFilter = _isFilterActive;
-                          final hasQuery =
-                              _isSearchMode &&
-                              _searchController.text.trim().isNotEmpty;
                           int originalIndex = i;
                           if (hasActiveFilter) {
                             if (i >= 0 && i < _activeFilterIndices.length) {
                               originalIndex = _activeFilterIndices[i];
-                            }
-                          } else if (hasQuery) {
-                            if (i >= 0 && i < _filteredDetailIndices.length) {
-                              originalIndex = _filteredDetailIndices[i];
                             }
                           }
                           _onItemVisible(originalIndex);
@@ -638,13 +699,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     return PieMenuWidget(
       key: _pieMenuKey,
       child: PopScope(
-        canPop: !_isSearchMode,
-        onPopInvokedWithResult: (didPop, result) async {
-          if (didPop) return;
-          if (_isSearchMode) {
-            _exitSearchMode();
-          }
-        },
+        canPop: true, // 常にポップ可能
         child: Scaffold(
           appBar: !context.watch<SettingsProvider>().useBottomAppBar
               ? PreferredSize(
@@ -664,33 +719,17 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
                   child: BottomAppBar(
                     child: Row(
                       children: [
-                        if (_isSearchMode)
-                          Expanded(
-                            child: TextField(
-                              controller: _searchController,
-                              autofocus: true,
-                              decoration: const InputDecoration(
-                                hintText: 'タグで検索（スペース区切りでAND）',
-                                border: InputBorder.none,
-                                isDense: true,
-                              ),
-                              textInputAction: TextInputAction.search,
-                              onChanged: _onSearchChanged,
-                              onSubmitted: (_) => _commitSearch(),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16.0,
                             ),
-                          )
-                        else
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16.0,
-                              ),
-                              child: Text(
-                                _isFilterActive ? '検索結果' : 'Pixiv Viewer',
-                                style: Theme.of(context).textTheme.titleLarge,
-                              ),
+                            child: Text(
+                              _isFilterActive ? '検索結果' : 'Pixiv Viewer',
+                              style: Theme.of(context).textTheme.titleLarge,
                             ),
                           ),
+                        ),
                         ..._buildActions(),
                       ],
                     ),
@@ -700,221 +739,13 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
           body: GestureDetector(
             behavior: HitTestBehavior.translucent,
             onTap: () {
-              if (_isSearchMode) {
-                FocusScope.of(context).unfocus();
-                _commitSearch();
-              }
+              // フルスクリーン検索オーバーレイ使用時は不要な処理を削除
             },
             child: Center(child: buildBody()),
           ),
         ),
       ),
     );
-  }
-
-  void _onSearchChanged(String value) {
-    _searchDebounce?.cancel();
-    // テキストが変更されたら、サジェストを更新し、少し待ってから検索を適用する
-    // テキストが空になっても検索モードは維持し、全件表示に戻す
-    _updateSuggestions(); // Fire-and-forget
-    _searchDebounce = Timer(const Duration(milliseconds: 300), _applySearch);
-  }
-
-  Future<void> _applySearch() async {
-    if (!_isSearchMode) return;
-    final raw = _searchController.text.trim();
-    // 空なら全解除
-    if (raw.isEmpty) {
-      setState(() {
-        _filteredDetailIndices = [];
-      });
-      return;
-    }
-
-    // スペース区切りでAND検索
-    final tokens = raw.split(RegExp(r"\s+"));
-
-    // 別名を考慮して検索する：各トークンについて、元のタグ名と別名の両方で検索
-    final expandedTokens = <String>[];
-    for (final token in tokens) {
-      expandedTokens.add(token); // 元のトークン
-      // 別名があるタグも検索対象に追加
-      final matchedTags = await _db.searchTagsByDisplayName(token);
-      expandedTokens.addAll(matchedTags);
-    }
-
-    // DBからパスのヒットリストを取得
-    final hitPaths = await _db.searchByTags(expandedTokens);
-    // 現在の detailFiles のインデックスに変換
-    final hitSet = hitPaths.toSet();
-    final indices = <int>[];
-    for (var i = 0; i < _imageFilesForDetail.length; i++) {
-      final p = _imageFilesForDetail[i].path;
-      if (hitSet.contains(p)) indices.add(i);
-    }
-    setState(() {
-      _filteredDetailIndices = indices;
-    });
-  }
-
-  Future<void> _commitSearch() async {
-    final raw = _searchController.text.trim();
-    if (raw.isEmpty) {
-      _clearCommittedFilter();
-      _exitSearchMode();
-      return;
-    }
-    // まず現在の結果を確定するために検索を実行
-    await _applySearch();
-    setState(() {
-      _isFilterActive = true;
-      _activeFilterIndices = List<int>.from(_filteredDetailIndices);
-      _lastCommittedQuery = raw;
-    });
-    _exitSearchMode();
-  }
-
-  void _clearCommittedFilter() {
-    setState(() {
-      _isFilterActive = false;
-      _activeFilterIndices = [];
-      _lastCommittedQuery = null;
-    });
-  }
-
-  // --- サジェスト ---
-  void _updateSuggestions() async {
-    final raw = _searchController.text;
-    // 最後のトークンに対してサジェスト
-    final tokens = raw
-        .split(RegExp(r"\s+"))
-        .where((e) => e.isNotEmpty)
-        .toList();
-    final last = tokens.isEmpty ? '' : tokens.last.toLowerCase();
-    if (last.isEmpty) {
-      setState(() {
-        _suggestions = [];
-      });
-      _removeSuggestionsOverlay();
-      return;
-    }
-
-    // 1) 既存タグから一致（元の名前で）
-    final fromTags = _allTags
-        .where((t) => t.toLowerCase().contains(last))
-        .take(20)
-        .toList();
-
-    // 2) 別名から一致するタグを検索
-    final matchedByAlias = await _db.searchTagsByDisplayName(last);
-
-    // 3) 別名を表示用に変換
-    final aliasesMap = await _db.getAllTagAliases();
-    final displayTags = <String>[];
-
-    // まず別名で表示できるもの
-    for (final tag in matchedByAlias) {
-      final alias = aliasesMap[tag];
-      if (alias != null && alias.toLowerCase().contains(last)) {
-        displayTags.add(alias);
-      }
-    }
-
-    // 次に元のタグ名で一致するもの（別名がある場合は別名で表示）
-    for (final tag in fromTags) {
-      final displayName = aliasesMap[tag] ?? tag;
-      if (!displayTags.contains(displayName)) {
-        displayTags.add(displayName);
-      }
-    }
-
-    setState(() {
-      _suggestions = displayTags.take(20).toList();
-    });
-    if (_isSearchMode) _showSuggestionsOverlay();
-  }
-
-  void _insertSuggestion(String tag) {
-    final raw = _searchController.text.trimRight();
-    final parts = raw.split(RegExp(r"\s+")).where((e) => e.isNotEmpty).toList();
-    if (parts.isEmpty) {
-      _searchController.text = tag;
-    } else {
-      parts.removeLast();
-      parts.add(tag);
-      _searchController.text = parts.join(' ');
-    }
-    _searchController.selection = TextSelection.fromPosition(
-      TextPosition(offset: _searchController.text.length),
-    );
-    _updateSuggestions();
-    _applySearch();
-  }
-
-  void _showSuggestionsOverlay() {
-    _removeSuggestionsOverlay();
-    if (!_isSearchMode || _suggestions.isEmpty) return;
-    // Ensure we insert into the top-most overlay so it renders over grid/list
-    final overlay = Navigator.of(context, rootNavigator: true).overlay;
-    final theme = Theme.of(context);
-    final settings = context.read<SettingsProvider>();
-
-    _suggestionsOverlay = OverlayEntry(
-      builder: (context) {
-        return Positioned(
-          left: 0,
-          right: 0,
-          top: settings.useBottomAppBar
-              ? MediaQuery.of(context).padding.top
-              : MediaQuery.of(context).padding.top + kToolbarHeight,
-          bottom: settings.useBottomAppBar
-              ? kBottomNavigationBarHeight +
-                    MediaQuery.of(context).padding.bottom
-              : null,
-          child: Material(
-            elevation: 4,
-            color: theme.colorScheme.surface,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 300),
-              child: MediaQuery.removePadding(
-                context: context,
-                removeTop: true,
-                child: ListView.builder(
-                  padding: EdgeInsets.zero,
-                  primary: false,
-                  shrinkWrap: true,
-                  itemCount: _suggestions.length,
-                  itemBuilder: (context, index) {
-                    final s = _suggestions[index];
-                    return ListTile(
-                      title: Text(s),
-                      onTap: () => _insertSuggestion(s),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-    overlay?.insert(_suggestionsOverlay!);
-  }
-
-  void _removeSuggestionsOverlay() {
-    _suggestionsOverlay?.remove();
-    _suggestionsOverlay = null;
-  }
-
-  // --- 検索モード終了 ---
-  void _exitSearchMode({bool resetInput = true}) {
-    setState(() {
-      _isSearchMode = false;
-      _filteredDetailIndices = [];
-      _suggestions = [];
-      _removeSuggestionsOverlay();
-      if (resetInput) _searchController.clear();
-    });
   }
 
   Future<void> _showShuffleOptionsDialog() async {
@@ -942,16 +773,13 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 
   Future<void> _shuffleImages() async {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
-    // 検索中/フィルタ中は「現在画面に表示されている項目のみ」をシャッフルする。
-    final hasQuery = _isSearchMode && _searchController.text.trim().isNotEmpty;
+    // フィルタ中は「現在画面に表示されている項目のみ」をシャッフルする。
     final hasActiveFilter = _isFilterActive;
 
     // 表示中のインデックス配列を決定（buildBody と同様のロジック）
     List<int> indices;
     if (hasActiveFilter) {
       indices = _activeFilterIndices;
-    } else if (hasQuery) {
-      indices = _filteredDetailIndices;
     } else {
       indices = const [];
     }
@@ -1032,12 +860,6 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   }
 
   void _resetScrollAndFilters() {
-    // 検索中なら再フィルタ
-    final hasQuery = _isSearchMode && _searchController.text.trim().isNotEmpty;
-    if (hasQuery) {
-      // 非同期だが結果は setState 内で反映
-      _applySearch();
-    }
     // コミット済みフィルタがある場合はパスで再マッピング
     if (_isFilterActive && _activeFilterIndices.isNotEmpty) {
       final prevPaths = _activeFilterIndices
@@ -1081,31 +903,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildTitle() {
-    return _isSearchMode
-        ? FocusScope(
-            child: Focus(
-              onFocusChange: (has) {
-                if (!has) {
-                  // 検索以外をタップしたら現在の結果で確定
-                  _commitSearch();
-                }
-              },
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'タグで検索（スペース区切りでAND）',
-                  border: InputBorder.none,
-                ),
-                textInputAction: TextInputAction.search,
-                onChanged: _onSearchChanged,
-                onSubmitted: (_) => _commitSearch(),
-              ),
-            ),
-          )
-        : _isFilterActive
-        ? const Text('検索結果')
-        : const Text('Pixiv Viewer');
+    return _isFilterActive ? const Text('検索結果') : const Text('Pixiv Viewer');
   }
 
   List<Widget> _buildActions() {
@@ -1114,7 +912,6 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
         icon: const Icon(Icons.photo_album_outlined),
         tooltip: 'アルバム',
         onPressed: () async {
-          _exitSearchMode();
           if (!mounted) return;
           await Navigator.push(
             context,
@@ -1144,67 +941,36 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
             );
           },
         ),
-      if (_isFilterActive && !_isSearchMode)
+      if (_isFilterActive)
         IconButton(
           icon: const Icon(Icons.filter_alt_off),
           tooltip: '検索結果をクリア',
           onPressed: _clearCommittedFilter,
         ),
-      if (_isSearchMode)
-        IconButton(
-          icon: const Icon(Icons.backspace),
-          tooltip: '入力クリア',
-          onPressed: () {
-            _searchController.clear();
-            _onSearchChanged('');
-          },
-        ),
       IconButton(
-        icon: Icon(_isSearchMode ? Icons.close : Icons.search),
-        tooltip: _isSearchMode ? '検索を閉じる' : 'タグ検索',
+        icon: const Icon(Icons.search),
+        tooltip: 'タグ検索',
+        onPressed: _showSearchOverlay,
+      ),
+      IconButton(
+        icon: const Icon(Icons.shuffle),
+        tooltip: '表示順をシャッフル',
         onPressed: () {
-          if (_isSearchMode) {
-            _exitSearchMode();
-          } else {
-            setState(() {
-              _isSearchMode = true;
-              // 検索結果画面から開いた場合は前回のクエリを復元
-              if (_isFilterActive &&
-                  (_lastCommittedQuery?.isNotEmpty ?? false)) {
-                _searchController.text = _lastCommittedQuery!;
-                _searchController.selection = TextSelection.fromPosition(
-                  TextPosition(offset: _searchController.text.length),
-                );
-              }
-              _updateSuggestions();
-              _showSuggestionsOverlay();
-            });
-          }
+          _showShuffleOptionsDialog();
         },
       ),
-      // 検索モード中はシャッフルと設定は検索と無関係なので非表示にする
-      if (!_isSearchMode) ...[
+      // 検索結果表示中は設定アイコンを非表示にする
+      if (!_isFilterActive)
         IconButton(
-          icon: const Icon(Icons.shuffle),
-          tooltip: '表示順をシャッフル',
-          onPressed: () {
-            _showShuffleOptionsDialog();
+          icon: const Icon(Icons.settings_outlined),
+          onPressed: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const SettingsScreen()),
+            );
+            _loadImages();
           },
         ),
-        // 設定アイコンは検索結果表示中は非表示にする
-        if (!_isFilterActive)
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () async {
-              _exitSearchMode();
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
-              );
-              _loadImages();
-            },
-          ),
-      ],
     ];
   }
 }
