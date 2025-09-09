@@ -136,6 +136,10 @@ class SettingsProvider extends ChangeNotifier {
   int _autoScrollInterval = 30;
   int get autoScrollInterval => _autoScrollInterval;
 
+  // BottomAppBarの使用設定（デフォルトはfalse = AppBar）
+  bool _useBottomAppBar = false;
+  bool get useBottomAppBar => _useBottomAppBar;
+
   /// ファイル破損チェック
   bool _isModelCorrupted = false;
   bool get isModelCorrupted => _isModelCorrupted;
@@ -160,6 +164,7 @@ class SettingsProvider extends ChangeNotifier {
       _settingsRepository.loadNsfwFilter(),
       _settingsRepository.loadShuffleOrder(),
       _settingsRepository.loadVisibleRatings(),
+      _settingsRepository.loadUseBottomAppBar(),
     ];
 
     final results = await Future.wait([
@@ -171,6 +176,7 @@ class SettingsProvider extends ChangeNotifier {
       settingsFutures[5], // nsfwFilter
       settingsFutures[6], // shuffleOrder
       settingsFutures[7], // visibleRatings
+      settingsFutures[8], // useBottomAppBar
       // エラー処理が必要な設定は個別に処理
       _settingsRepository.loadLastViewedImagePath().catchError((_) => null),
       _settingsRepository.loadLastViewedAssetId().catchError((_) => null),
@@ -189,11 +195,12 @@ class SettingsProvider extends ChangeNotifier {
     _nsfwFilterEnabled = results[5] as bool;
     _shuffleOrder = results[6] as List<int>?;
     _visibleRatings = results[7] as Map<Rating, bool>;
-    _lastViewedImagePath = results[8] as String?;
-    _lastViewedAssetId = results[9] as String?;
-    _gridScrollPreferPosition = results[10] as String;
-    _autoScrollInterval = results[11] as int;
-    _isAutoUpdateEnabled = results[12] as bool;
+    _useBottomAppBar = results[8] as bool;
+    _lastViewedImagePath = results[9] as String?;
+    _lastViewedAssetId = results[10] as String?;
+    _gridScrollPreferPosition = results[11] as String;
+    _autoScrollInterval = results[12] as int;
+    _isAutoUpdateEnabled = results[13] as bool;
 
     // フォルダ統計を非同期で自動更新（UIブロックを避ける）
     _checkAndAutoUpdateFolderStats();
@@ -310,6 +317,12 @@ class SettingsProvider extends ChangeNotifier {
     if (interval < 5) interval = 5; // 最小値制限：0.5秒
     _autoScrollInterval = interval;
     await _settingsRepository.saveAutoScrollInterval(interval);
+    notifyListeners();
+  }
+
+  Future<void> setUseBottomAppBar(bool useBottomAppBar) async {
+    _useBottomAppBar = useBottomAppBar;
+    await _settingsRepository.saveUseBottomAppBar(useBottomAppBar);
     notifyListeners();
   }
 

@@ -21,6 +21,7 @@ class SettingsRepository {
   static const String _visibleRatingsKey = 'visible_ratings';
   static const String _autoScrollIntervalKey = 'auto_scroll_interval';
   static const String _isAutoUpdateEnabledKey = 'is_auto_update_enabled';
+  static const String _useBottomAppBarKey = 'use_bottom_app_bar';
 
   Future<void> saveFolderSettings(List<FolderSetting> folderSettings) async {
     final prefs = await SharedPreferencesHelper.instance;
@@ -208,5 +209,16 @@ class SettingsRepository {
   Future<bool> loadIsAutoUpdateEnabled() async {
     final prefs = await SharedPreferencesHelper.instance;
     return prefs.getBool(_isAutoUpdateEnabledKey) ?? true; // デフォルト有効
+  }
+
+  // --- Bottom AppBar settings ---
+  Future<void> saveUseBottomAppBar(bool useBottomAppBar) async {
+    final prefs = await SharedPreferencesHelper.instance;
+    await prefs.setBool(_useBottomAppBarKey, useBottomAppBar);
+  }
+
+  Future<bool> loadUseBottomAppBar() async {
+    final prefs = await SharedPreferencesHelper.instance;
+    return prefs.getBool(_useBottomAppBarKey) ?? false; // デフォルトはAppBar
   }
 }

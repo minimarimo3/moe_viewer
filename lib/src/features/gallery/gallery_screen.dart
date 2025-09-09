@@ -646,146 +646,57 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
           }
         },
         child: Scaffold(
-          appBar: PreferredSize(
-            preferredSize: const Size.fromHeight(kToolbarHeight),
-            child: SizeTransition(
-              sizeFactor: _appBarAnimationController,
-              child: AppBar(
-                title: _isSearchMode
-                    ? FocusScope(
-                        child: Focus(
-                          onFocusChange: (has) {
-                            if (!has) {
-                              // 検索以外をタップしたら現在の結果で確定
-                              _commitSearch();
-                            }
-                          },
-                          child: TextField(
-                            controller: _searchController,
-                            autofocus: true,
-                            decoration: const InputDecoration(
-                              hintText: 'タグで検索（スペース区切りでAND）',
-                              border: InputBorder.none,
-                            ),
-                            textInputAction: TextInputAction.search,
-                            onChanged: _onSearchChanged,
-                            onSubmitted: (_) => _commitSearch(),
-                          ),
-                        ),
-                      )
-                    : _isFilterActive
-                    ? const Text('検索結果')
-                    : const Text('Pixiv Viewer'),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.photo_album_outlined),
-                    tooltip: 'アルバム',
-                    onPressed: () async {
-                      _exitSearchMode();
-                      if (!mounted) return;
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const AlbumsScreen()),
-                      );
-                    },
+          appBar: !context.watch<SettingsProvider>().useBottomAppBar
+              ? PreferredSize(
+                  preferredSize: const Size.fromHeight(kToolbarHeight),
+                  child: SizeTransition(
+                    sizeFactor: _appBarAnimationController,
+                    child: AppBar(
+                      title: _buildTitle(),
+                      actions: _buildActions(),
+                    ),
                   ),
-                  if (_isFilterActive)
-                    IconButton(
-                      icon: const Icon(Icons.playlist_add),
-                      tooltip: '検索結果をアルバムへ追加',
-                      onPressed: () async {
-                        // 現在の有効なリスト（フィルタ確定済み）をアルバムに一括追加
-                        final indices = _activeFilterIndices;
-                        if (indices.isEmpty) return;
-                        final paths = indices
-                            .map((i) => _imageFilesForDetail[i].path)
-                            .toList();
-                        final messenger = ScaffoldMessenger.of(context);
-                        final albumId = await pickAlbumDialog(context);
-                        if (!mounted) return;
-                        if (albumId == null) return;
-                        await DatabaseHelper.instance.addImagesToAlbum(
-                          albumId,
-                          paths,
-                        );
-                        if (!mounted) return;
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text('${paths.length}件をアルバムに追加しました'),
-                          ),
-                        );
-                      },
-                    ),
-                  if (_isFilterActive && !_isSearchMode)
-                    IconButton(
-                      icon: const Icon(Icons.filter_alt_off),
-                      tooltip: '検索結果をクリア',
-                      onPressed: _clearCommittedFilter,
-                    ),
-                  if (_isSearchMode)
-                    IconButton(
-                      icon: const Icon(Icons.backspace),
-                      tooltip: '入力クリア',
-                      onPressed: () {
-                        _searchController.clear();
-                        _onSearchChanged('');
-                      },
-                    ),
-                  IconButton(
-                    icon: Icon(_isSearchMode ? Icons.close : Icons.search),
-                    tooltip: _isSearchMode ? '検索を閉じる' : 'タグ検索',
-                    onPressed: () {
-                      if (_isSearchMode) {
-                        _exitSearchMode();
-                      } else {
-                        setState(() {
-                          _isSearchMode = true;
-                          // 検索結果画面から開いた場合は前回のクエリを復元
-                          if (_isFilterActive &&
-                              (_lastCommittedQuery?.isNotEmpty ?? false)) {
-                            _searchController.text = _lastCommittedQuery!;
-                            _searchController.selection =
-                                TextSelection.fromPosition(
-                                  TextPosition(
-                                    offset: _searchController.text.length,
-                                  ),
-                                );
-                          }
-                          _updateSuggestions();
-                          _showSuggestionsOverlay();
-                        });
-                      }
-                    },
-                  ),
-                  // 検索モード中はシャッフルと設定は検索と無関係なので非表示にする
-                  if (!_isSearchMode) ...[
-                    IconButton(
-                      icon: const Icon(Icons.shuffle),
-                      tooltip: '表示順をシャッフル',
-                      onPressed: () {
-                        _showShuffleOptionsDialog();
-                      },
-                    ),
-                    // 設定アイコンは検索結果表示中は非表示にする
-                    if (!_isFilterActive)
-                      IconButton(
-                        icon: const Icon(Icons.settings_outlined),
-                        onPressed: () async {
-                          _exitSearchMode();
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const SettingsScreen(),
+                )
+              : null,
+          bottomNavigationBar: context.watch<SettingsProvider>().useBottomAppBar
+              ? SizeTransition(
+                  sizeFactor: _appBarAnimationController,
+                  child: BottomAppBar(
+                    child: Row(
+                      children: [
+                        if (_isSearchMode)
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              autofocus: true,
+                              decoration: const InputDecoration(
+                                hintText: 'タグで検索（スペース区切りでAND）',
+                                border: InputBorder.none,
+                                isDense: true,
+                              ),
+                              textInputAction: TextInputAction.search,
+                              onChanged: _onSearchChanged,
+                              onSubmitted: (_) => _commitSearch(),
                             ),
-                          );
-                          _loadImages();
-                        },
-                      ),
-                  ],
-                ],
-              ),
-            ),
-          ),
+                          )
+                        else
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0,
+                              ),
+                              child: Text(
+                                _isFilterActive ? '検索結果' : 'Pixiv Viewer',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                            ),
+                          ),
+                        ..._buildActions(),
+                      ],
+                    ),
+                  ),
+                )
+              : null,
           body: GestureDetector(
             behavior: HitTestBehavior.translucent,
             onTap: () {
@@ -946,12 +857,20 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     // Ensure we insert into the top-most overlay so it renders over grid/list
     final overlay = Navigator.of(context, rootNavigator: true).overlay;
     final theme = Theme.of(context);
+    final settings = context.read<SettingsProvider>();
+
     _suggestionsOverlay = OverlayEntry(
       builder: (context) {
         return Positioned(
           left: 0,
           right: 0,
-          top: MediaQuery.of(context).padding.top + kToolbarHeight,
+          top: settings.useBottomAppBar
+              ? MediaQuery.of(context).padding.top
+              : MediaQuery.of(context).padding.top + kToolbarHeight,
+          bottom: settings.useBottomAppBar
+              ? kBottomNavigationBarHeight +
+                    MediaQuery.of(context).padding.bottom
+              : null,
           child: Material(
             elevation: 4,
             color: theme.colorScheme.surface,
@@ -1159,5 +1078,133 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
       _displayItems = result.displayItems;
       _imageFilesForDetail = result.detailFiles;
     });
+  }
+
+  Widget _buildTitle() {
+    return _isSearchMode
+        ? FocusScope(
+            child: Focus(
+              onFocusChange: (has) {
+                if (!has) {
+                  // 検索以外をタップしたら現在の結果で確定
+                  _commitSearch();
+                }
+              },
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'タグで検索（スペース区切りでAND）',
+                  border: InputBorder.none,
+                ),
+                textInputAction: TextInputAction.search,
+                onChanged: _onSearchChanged,
+                onSubmitted: (_) => _commitSearch(),
+              ),
+            ),
+          )
+        : _isFilterActive
+        ? const Text('検索結果')
+        : const Text('Pixiv Viewer');
+  }
+
+  List<Widget> _buildActions() {
+    return [
+      IconButton(
+        icon: const Icon(Icons.photo_album_outlined),
+        tooltip: 'アルバム',
+        onPressed: () async {
+          _exitSearchMode();
+          if (!mounted) return;
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AlbumsScreen()),
+          );
+        },
+      ),
+      if (_isFilterActive)
+        IconButton(
+          icon: const Icon(Icons.playlist_add),
+          tooltip: '検索結果をアルバムへ追加',
+          onPressed: () async {
+            // 現在の有効なリスト（フィルタ確定済み）をアルバムに一括追加
+            final indices = _activeFilterIndices;
+            if (indices.isEmpty) return;
+            final paths = indices
+                .map((i) => _imageFilesForDetail[i].path)
+                .toList();
+            final messenger = ScaffoldMessenger.of(context);
+            final albumId = await pickAlbumDialog(context);
+            if (!mounted) return;
+            if (albumId == null) return;
+            await DatabaseHelper.instance.addImagesToAlbum(albumId, paths);
+            if (!mounted) return;
+            messenger.showSnackBar(
+              SnackBar(content: Text('${paths.length}件をアルバムに追加しました')),
+            );
+          },
+        ),
+      if (_isFilterActive && !_isSearchMode)
+        IconButton(
+          icon: const Icon(Icons.filter_alt_off),
+          tooltip: '検索結果をクリア',
+          onPressed: _clearCommittedFilter,
+        ),
+      if (_isSearchMode)
+        IconButton(
+          icon: const Icon(Icons.backspace),
+          tooltip: '入力クリア',
+          onPressed: () {
+            _searchController.clear();
+            _onSearchChanged('');
+          },
+        ),
+      IconButton(
+        icon: Icon(_isSearchMode ? Icons.close : Icons.search),
+        tooltip: _isSearchMode ? '検索を閉じる' : 'タグ検索',
+        onPressed: () {
+          if (_isSearchMode) {
+            _exitSearchMode();
+          } else {
+            setState(() {
+              _isSearchMode = true;
+              // 検索結果画面から開いた場合は前回のクエリを復元
+              if (_isFilterActive &&
+                  (_lastCommittedQuery?.isNotEmpty ?? false)) {
+                _searchController.text = _lastCommittedQuery!;
+                _searchController.selection = TextSelection.fromPosition(
+                  TextPosition(offset: _searchController.text.length),
+                );
+              }
+              _updateSuggestions();
+              _showSuggestionsOverlay();
+            });
+          }
+        },
+      ),
+      // 検索モード中はシャッフルと設定は検索と無関係なので非表示にする
+      if (!_isSearchMode) ...[
+        IconButton(
+          icon: const Icon(Icons.shuffle),
+          tooltip: '表示順をシャッフル',
+          onPressed: () {
+            _showShuffleOptionsDialog();
+          },
+        ),
+        // 設定アイコンは検索結果表示中は非表示にする
+        if (!_isFilterActive)
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () async {
+              _exitSearchMode();
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+              _loadImages();
+            },
+          ),
+      ],
+    ];
   }
 }

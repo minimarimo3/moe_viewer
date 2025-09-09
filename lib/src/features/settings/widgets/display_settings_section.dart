@@ -97,6 +97,21 @@ class DisplaySettingsSection extends StatelessWidget {
             },
           ),
         ),
+
+        ListTile(
+          leading: const Icon(Icons.horizontal_rule),
+          title: const Text('アプリバーの位置'),
+          trailing: DropdownButton<bool>(
+            value: settings.useBottomAppBar,
+            items: const [
+              DropdownMenuItem(value: false, child: Text('トップ')),
+              DropdownMenuItem(value: true, child: Text('ボトム')),
+            ],
+            onChanged: (bool? newValue) {
+              if (newValue != null) settings.setUseBottomAppBar(newValue);
+            },
+          ),
+        ),
       ],
     );
   }
